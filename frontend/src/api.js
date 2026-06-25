@@ -1,35 +1,47 @@
 import axios from 'axios';
 
-// Set your backend API base URL
-const API_URL = 'http://127.0.0.1:8000/api/';
+//  Use Vite environment variable for API URL
+// In your .env file: VITE_API_URL=http://localhost:8000/api/ (dev)
+// Production: VITE_API_URL=https://mehwishshakoor.pythonanywhere.com/api/
+const API_URL = import.meta.env.VITE_API_URL;
 
-// Register a new user
-export const registerUser = (data) => axios.post(`${API_URL}register/`, data);
+// Create Axios instance
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-// Log in user and get token
-export const loginUser = (data) => axios.post(`${API_URL}login/`, data);
+//  Automatically attach JWT token to every request
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// Create a new task (requires JWT token)
-export const createTask = (data, token) =>
-  axios.post(`${API_URL}create-task/`, data, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+// ===================== AUTH =====================
 
-// Get tasks assigned to the current user (requires JWT token)
-export const getAssignedTasks = (token) =>
-  axios.get(`${API_URL}assigned-tasks/`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+// Register new user
+export const registerUser = (data) => api.post('register/', data);
 
-// Update a specific task (requires JWT token)
-export const updateTask = (id, data, token) =>
-  axios.put(`${API_URL}update-task/${id}/`, data, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+// Login user (JWT)
+export const loginUser = (data) => api.post('login/', data);
 
+// ===================== TASKS =====================
+
+// Create a new task
+export const createTask = (data) => api.post('create-task/', data);
+
+// Get tasks assigned to current user
+export const getAssignedTasks = () => api.get('assigned-tasks/');
+
+// Update task status/details
+export const updateTask = (id, data) => api.put(`update-task/${id}/`, data);
+
+export default api;

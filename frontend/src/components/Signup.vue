@@ -12,8 +12,6 @@
       <div class="right-panel">
         <h2>Create Account</h2>
 
-       
-
         <form @submit.prevent="register">
           <input v-model="username" type="text" placeholder="Username" />
           <input v-model="email" type="email" placeholder="Email" />
@@ -35,7 +33,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { registerUser } from "@/api"; // ✅ import from api.js
 
 export default {
   data() {
@@ -62,7 +60,8 @@ export default {
           role: this.role
         }
 
-        await axios.post('http://localhost:8000/api/register/', payload)
+        // ✅ Use api.js registerUser function instead of hardcoded localhost
+        await registerUser(payload)
 
         this.message = 'Account created successfully.'
         this.username = ''
@@ -82,6 +81,10 @@ export default {
 </script>
 
 <style scoped>
+* {
+  font-family: 'Poppins', sans-serif;
+}
+/* same styling as before */
 .container {
   display: flex;
   justify-content: center;
@@ -99,13 +102,14 @@ export default {
 }
 .left-panel {
   flex: 1;
-  background: linear-gradient(to right, #5f2c82, #49a09d);
+  background: linear-gradient(to right, #159aff,#159aff);
   color: white;
   padding: 50px 30px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   text-align: center;
+  
 }
 .btn-outline {
   border: 2px solid white;
@@ -119,7 +123,7 @@ export default {
 }
 .btn-outline:hover {
   background: white;
-  color: #5f2c82;
+  color: #159aff;
 }
 .right-panel {
   flex: 1.2;
@@ -141,7 +145,7 @@ form select {
   font-size: 1rem;
 }
 .btn-primary {
-  background: #5f2c82;
+  background: #159aff;
   color: white;
   border: none;
   padding: 12px;
@@ -151,7 +155,7 @@ form select {
   transition: background 0.3s;
 }
 .btn-primary:hover {
-  background: #45205f;
+  background: #159aff;
 }
 .btn-primary:disabled {
   background: #ccc;

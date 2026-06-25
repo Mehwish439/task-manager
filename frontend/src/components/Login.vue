@@ -7,6 +7,7 @@
         <p>Don't have an account? Create one and join the team.</p>
         <button class="btn-outline" @click="goToRegister">SIGN UP</button>
       </div>
+      
 
       <!-- Right Panel (Login Form) -->
       <div class="right-panel">
@@ -16,6 +17,7 @@
           <input v-model="password" type="password" placeholder="Password" />
           <button class="btn-primary" :disabled="!isFormValid">LOGIN</button>
           <p class="error-message" v-if="error">{{ error }}</p>
+        
         </form>
       </div>
     </div>
@@ -23,7 +25,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import api, { loginUser } from "@/api"
 
 export default {
   data() {
@@ -42,26 +44,21 @@ export default {
     async login() {
       this.error = ''
       try {
-        const res = await axios.post('http://localhost:8000/api/login/', {
+        const res = await loginUser({
           username: this.username,
           password: this.password
         })
 
-        const access = res.data.access
-        const refresh = res.data.refresh
+        localStorage.setItem('access', res.data.access)
+        localStorage.setItem('refresh', res.data.refresh)
 
-        localStorage.setItem('access', access)
-        localStorage.setItem('refresh', refresh)
-
-        const me = await axios.get('http://localhost:8000/api/me/', {
-          headers: { Authorization: `Bearer ${access}` }
-        })
-
+        const me = await api.get('me/')
         const role = me.data.role
+
         if (role === 'team_member') {
           this.$router.push({ name: 'AssignedTasks' })
         } else {
-          this.$router.push({ name: 'CreateTask' })
+          this.$router.push({ name: 'TaskList' }) // 
         }
 
       } catch (err) {
@@ -70,14 +67,16 @@ export default {
       }
     },
     goToRegister() {
-      this.$router.push({ name: 'Signup' }) // ✅ using named route
+      this.$router.push({ name: 'Signup' })
     }
   }
 }
 </script>
 
 <style scoped>
-/* same styling */
+* {
+  font-family: 'Poppins', sans-serif;
+}
 .container {
   display: flex;
   justify-content: center;
@@ -95,7 +94,7 @@ export default {
 }
 .left-panel {
   flex: 1;
-  background: linear-gradient(to right, #5f2c82, #49a09d);
+  background: linear-gradient(to right, #159aff,#159aff);
   color: white;
   padding: 50px 30px;
   display: flex;
@@ -115,7 +114,7 @@ export default {
 }
 .btn-outline:hover {
   background: white;
-  color: #5f2c82;
+  color: #159aff;
 }
 .right-panel {
   flex: 1.2;
@@ -136,7 +135,7 @@ form input {
   font-size: 1rem;
 }
 .btn-primary {
-  background: #5f2c82;
+  background: #159aff;
   color: white;
   border: none;
   padding: 12px;
@@ -146,7 +145,7 @@ form input {
   transition: background 0.3s;
 }
 .btn-primary:hover {
-  background: #45205f;
+  background:#159aff;
 }
 .btn-primary:disabled {
   background: #ccc;
@@ -155,7 +154,7 @@ form input {
 .error-message {
   margin-top: 10px;
   text-align: center;
-  color: #dc3545;
+  color: #159aff;
   font-size: 0.95rem;
 }
 </style>

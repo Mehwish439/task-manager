@@ -24,7 +24,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import api from "@/api" // ✅ use api.js
 import CommentItem from './CommentItem.vue'
 
 export default {
@@ -44,11 +44,8 @@ export default {
   },
   methods: {
     async getCurrentUser() {
-      const token = localStorage.getItem('access')
       try {
-        const res = await axios.get('http://localhost:8000/api/me/', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        const res = await api.get('me/')
         this.currentUser = res.data.username
       } catch (err) {
         console.error('Could not fetch current user.')
@@ -56,12 +53,8 @@ export default {
     },
 
     async fetchComments() {
-      const token = localStorage.getItem('access')
       try {
-        const res = await axios.get(
-          `http://localhost:8000/api/tasks/${this.taskId}/comments/`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        const res = await api.get(`tasks/${this.taskId}/comments/`)
         this.comments = res.data
       } catch (err) {
         console.error('Error fetching comments:', err)
@@ -70,15 +63,9 @@ export default {
     },
 
     async postComment() {
-      const token = localStorage.getItem('access')
-      if (!token || !this.newComment.trim()) return
-
+      if (!this.newComment.trim()) return
       try {
-        await axios.post(
-          `http://localhost:8000/api/tasks/${this.taskId}/comments/`,
-          { content: this.newComment },
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        await api.post(`tasks/${this.taskId}/comments/`, { content: this.newComment })
         this.newComment = ''
         this.fetchComments()
       } catch (err) {
@@ -89,3 +76,51 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+* {
+  font-family: 'Poppins', sans-serif;
+}
+.comment-section {
+  margin-top: 20px;
+  background: #f4f5f7;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.comment-form textarea {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.btn-primary {
+  background: #159aff;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn-primary:hover {
+  background: #159aff;
+}
+
+.error-message {
+  color: #dc3545;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+</style>

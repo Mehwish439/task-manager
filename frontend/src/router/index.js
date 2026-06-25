@@ -11,7 +11,7 @@ const routes = [
   { path: '/login', name: 'Login', component: Login },
   { path: '/create-task', name: 'CreateTask', component: CreateTask },
   { path: '/assigned-tasks', name: 'AssignedTasks', component: AssignedTasks },
-   { path: '/task-list', name: 'TaskList', component: TaskList },
+  { path: '/task-list', name: 'TaskList', component: TaskList },
   { path: '/:catchAll(.*)', redirect: { name: 'Login' } } // optional fallback
  
 

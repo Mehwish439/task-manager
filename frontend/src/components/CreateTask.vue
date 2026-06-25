@@ -11,6 +11,10 @@
         <input v-model="description" type="text" placeholder="Task Description" />
         <input v-model="startDate" type="date" />
         <input v-model="endDate" type="date" />
+
+        <!-- File Upload -->
+        <input type="file" @change="handleFile" />
+
         <button class="btn-primary" type="submit" :disabled="!isFormValid">Create Task</button>
       </form>
 
@@ -32,7 +36,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import api from "@/api" // ✅ updated to use api.js
 
 export default {
   name: 'CreateTask',
@@ -43,6 +47,7 @@ export default {
       assignedTo: [],
       startDate: '',
       endDate: '',
+      attachment: null, // ✅ new for file upload
       message: '',
       assignMessage: '',
       error: '',
@@ -60,87 +65,59 @@ export default {
   },
   methods: {
     async fetchTeamMembers() {
-      let token = localStorage.getItem('access')
-      if (!token) return this.redirectToLogin("Authentication token missing. Please log in.")
-
       try {
-        const res = await axios.get('http://localhost:8000/api/team-members/', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        const res = await api.get('team-members/')
         this.teamMembers = res.data
       } catch (err) {
-        if (err.response?.status === 401) {
-          const newToken = await this.refreshToken()
-          if (newToken) return this.fetchTeamMembers()
-        }
-        this.error = "Failed to load team members. Please log in again."
+        this.handleApiError(err, "Failed to load team members. Please log in again.")
       }
+    },
+
+    // ✅ handle file selection
+    handleFile(e) {
+      this.attachment = e.target.files[0]
     },
 
     async createTask() {
       this.message = ''
       this.error = ''
       this.createdTaskId = null
-      let token = localStorage.getItem('access')
-      if (!token) return this.redirectToLogin("Please login to create a task.")
 
       try {
-        const res = await axios.post('http://localhost:8000/api/create-task/', {
-          title: this.title,
-          description: this.description,
-          start_date: this.startDate,
-          end_date: this.endDate
-        }, {
-          headers: { Authorization: `Bearer ${token}` }
+        const formData = new FormData()
+        formData.append('title', this.title)
+        formData.append('description', this.description)
+        formData.append('start_date', this.startDate)
+        formData.append('end_date', this.endDate)
+        if (this.attachment) formData.append('attachment', this.attachment)
+
+        const res = await api.post('create-task/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         })
 
         this.message = `✅ Task created successfully (ID: ${res.data.task_id})`
         this.createdTaskId = res.data.task_id
         this.resetForm()
-
       } catch (err) {
-        if (err.response?.status === 401) {
-          const newToken = await this.refreshToken()
-          if (newToken) return this.createTask()
-        }
-        this.error = err.response?.data?.error || "Failed to create task."
+        this.handleApiError(err, "Failed to create task.")
       }
     },
 
     async assignUsers() {
-      let token = localStorage.getItem('access')
-      if (!token) return this.redirectToLogin("Please log in to assign users.")
-
+      if (!this.createdTaskId) return
       try {
-        await axios.post(`http://localhost:8000/api/assign-task/${this.createdTaskId}/`, {
-          assigned_to: this.assignedTo
-        }, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-
+        await api.post(`assign-task/${this.createdTaskId}/`, { assigned_to: this.assignedTo })
         this.assignMessage = "✅ Users successfully assigned to the task!"
       } catch (err) {
-        if (err.response?.status === 401) {
-          const newToken = await this.refreshToken()
-          if (newToken) return this.assignUsers()
-        }
-        this.error = err.response?.data?.error || "Failed to assign users."
+        this.handleApiError(err, "Failed to assign users.")
       }
     },
 
-    async refreshToken() {
-      const refresh = localStorage.getItem('refresh')
-      if (!refresh) return this.redirectToLogin("Session expired. Please log in again.")
-
-      try {
-        const res = await axios.post('http://localhost:8000/api/refresh-token/', {
-          refresh: refresh
-        })
-        const newAccess = res.data.access
-        localStorage.setItem('access', newAccess)
-        return newAccess
-      } catch (err) {
-        return this.redirectToLogin("Session expired. Please log in again.")
+    handleApiError(err, fallbackMsg) {
+      if (err.response?.status === 401) {
+        this.redirectToLogin("Session expired. Please log in again.")
+      } else {
+        this.error = err.response?.data?.error || fallbackMsg
       }
     },
 
@@ -158,6 +135,7 @@ export default {
       this.description = ''
       this.startDate = ''
       this.endDate = ''
+      this.attachment = null
     },
 
     goToTaskList() {
@@ -168,6 +146,9 @@ export default {
 </script>
 
 <style scoped>
+* {
+  font-family: 'Poppins', sans-serif;
+}
 .container {
   display: flex;
   justify-content: center;
@@ -210,7 +191,7 @@ select[multiple] {
 }
 
 .btn-primary {
-  background: #5f2c82;
+  background: #159aff;
   color: white;
   border: none;
   padding: 12px;
@@ -221,13 +202,13 @@ select[multiple] {
 }
 
 .btn-primary:hover {
-  background: #45205f;
+  background: #159aff;
 }
 
 .btn-outline {
-  border: 2px solid #5f2c82;
+  border: 2px solid #159aff;
   background: transparent;
-  color: #5f2c82;
+  color: #159aff;
   padding: 10px 20px;
   font-weight: 600;
   border-radius: 6px;
@@ -236,7 +217,7 @@ select[multiple] {
 }
 
 .btn-outline:hover {
-  background: #5f2c82;
+  background: #159aff;
   color: white;
 }
 
