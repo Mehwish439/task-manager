@@ -33,11 +33,6 @@
         <span v-if="!sidebarCollapsed">Users</span>
       </button>
 
-      <button class="nav-btn" :class="{ active: activeSection === 'calendar' }" @click="activeSection='calendar'">
-        <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        <span v-if="!sidebarCollapsed">Calendar</span>
-      </button>
-
       <button class="nav-btn" :class="{ active: activeSection === 'groupChat' }" @click="activeSection='groupChat'">
         <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
         <span v-if="!sidebarCollapsed">Group Chat</span>
@@ -84,42 +79,126 @@
 
       <!-- ===== TASKS ===== -->
       <section v-if="activeSection === 'tasks'">
-        <ul v-if="filteredTasks.length" class="task-list">
-          <li v-for="task in filteredTasks" :key="task.id" class="task-card">
-            <div class="task-header">
-              <strong class="task-title">{{ task.title }}</strong>
-              <span class="status" :class="task.status">{{ task.status.replace('_',' ') }}</span>
+        <div class="tasks-layout">
+
+          <!-- LEFT: TASK LIST -->
+          <div class="tasks-list-col">
+            <div class="tasks-col-header">
+              <h2 class="section-heading" style="border:none;padding-bottom:0;margin-bottom:0;">
+                Tasks
+                <span class="tasks-count-badge">{{ filteredTasks.length }}</span>
+              </h2>
+              <button v-if="taskCalendarFilterDate" class="chip-clear" @click="taskCalendarFilterDate = null">
+                {{ formatChipDate(taskCalendarFilterDate) }}
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
             </div>
-            <div class="task-desc-card">
-              <p class="desc">{{ task.description }}</p>
-              <p class="task-meta"><strong>Start:</strong> {{ task.start_date || '—' }} &nbsp;·&nbsp; <strong>End:</strong> {{ task.end_date || '—' }}</p>
-              <div v-if="task.comments && task.comments.length" class="task-comments">
-                <strong>Comments</strong>
-                <ul class="comments-list">
-                  <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
-                </ul>
+
+            <ul v-if="filteredTasks.length" class="task-list task-list-compact">
+              <li v-for="task in filteredTasks" :key="task.id" class="task-card task-card-compact" :id="'task-' + task.id">
+                <div class="task-header task-header-compact">
+                  <strong class="task-title">{{ task.title }}</strong>
+                  <span class="status" :class="task.status">{{ task.status.replace('_',' ') }}</span>
+                </div>
+                <p class="desc desc-compact">{{ task.description }}</p>
+                <div class="task-meta-row">
+                  <span class="meta-pill"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>{{ task.start_date || '—' }} → {{ task.end_date || '—' }}</span>
+                </div>
+
+                <div v-if="task.comments && task.comments.length" class="task-comments task-comments-compact">
+                  <span class="comments-toggle" @click="toggleTaskComments(task.id)">
+                    {{ task.comments.length }} comment{{ task.comments.length > 1 ? 's' : '' }}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ rotated: expandedComments === task.id }"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </span>
+                  <ul v-if="expandedComments === task.id" class="comments-list">
+                    <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
+                  </ul>
+                </div>
+
+                <div class="assigned-row">
+                  <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-pills">
+                    <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
+                  </div>
+                  <em v-else class="unassigned-note">Unassigned</em>
+                </div>
+
+                <div class="task-card-footer">
+                  <div class="assign-section assign-section-compact">
+                    <select v-model="selectedUser[task.id]">
+                      <option disabled value="">Assign…</option>
+                      <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
+                    </select>
+                    <button class="btn-primary btn-xs" @click="assignUser(task.id)">Assign</button>
+                  </div>
+                  <button class="btn-danger btn-xs" @click="showModal(task.id)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </li>
+            </ul>
+            <div class="empty-state" v-else>
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+              <p>{{ taskCalendarFilterDate ? 'No tasks starting on this date.' : 'No tasks created yet.' }}</p>
+            </div>
+          </div>
+
+          <!-- RIGHT: MINI CALENDAR -->
+          <aside class="tasks-calendar-col">
+            <div class="mini-cal-card">
+              <div class="mini-cal-header">
+                <span class="panel-title">{{ monthNames[calendarMonth-1] }} {{ calendarYear }}</span>
+                <div class="mini-cal-nav">
+                  <button class="mini-cal-nav-btn" @click="shiftTaskCalendar(-1)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                  </button>
+                  <button class="mini-cal-nav-btn" @click="shiftTaskCalendar(1)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="mini-cal-grid">
+                <div class="mini-cal-day mini-cal-dow" v-for="d in weekDays" :key="d">{{ d.charAt(0) }}</div>
+                <div v-for="blank in startDay" :key="'mb'+blank" class="mini-cal-day mini-cal-blank"></div>
+                <div
+                  v-for="day in daysInMonth"
+                  :key="day"
+                  class="mini-cal-day"
+                  :class="{
+                    'has-tasks': tasksForDay(day).length,
+                    'is-selected': isTaskCalendarDaySelected(day),
+                    'is-today': isTaskCalendarDayToday(day)
+                  }"
+                  @click="selectTaskCalendarDay(day)"
+                >
+                  <span class="mini-cal-daynum">{{ day }}</span>
+                  <span v-if="tasksForDay(day).length" class="mini-cal-dot-row">
+                    <span v-for="n in Math.min(tasksForDay(day).length, 3)" :key="n" class="mini-cal-dot"
+                      :style="{ background: tasksForDay(day)[n-1].status === 'complete' ? '#22c55e' : (tasksForDay(day)[n-1].status === 'in_progress' ? '#159aff' : '#eab308') }"></span>
+                  </span>
+                </div>
+              </div>
+              <div class="mini-cal-legend">
+                <span><i class="dot-pending"></i>Pending</span>
+                <span><i class="dot-progress"></i>In progress</span>
+                <span><i class="dot-complete"></i>Complete</span>
               </div>
             </div>
-            <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-section">
-              <span class="assigned-label">Assigned to</span>
-              <div class="assigned-pills">
-                <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
+
+            <div class="mini-cal-card" v-if="taskCalendarFilterDate">
+              <div class="mini-cal-header">
+                <span class="panel-title">{{ formatChipDate(taskCalendarFilterDate) }}</span>
+                <span class="tasks-count-badge">{{ filteredTasks.length }}</span>
+              </div>
+              <div class="day-task-mini-list">
+                <a v-for="task in filteredTasks" :key="'mini-'+task.id" class="day-task-mini-item" :href="'#task-' + task.id">
+                  <span class="dtm-dot" :class="task.status"></span>
+                  <span class="dtm-title">{{ task.title }}</span>
+                </a>
+                <div v-if="!filteredTasks.length" class="act-empty" style="padding:4px 0;">No tasks.</div>
               </div>
             </div>
-            <em v-else class="unassigned-note">No one assigned yet.</em>
-            <div class="assign-section">
-              <select v-model="selectedUser[task.id]">
-                <option disabled value="">Assign member…</option>
-                <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
-              </select>
-              <button class="btn-primary assign-btn" @click="assignUser(task.id)">Assign</button>
-            </div>
-            <button class="btn-danger" @click="showModal(task.id)">Delete</button>
-          </li>
-        </ul>
-        <div class="empty-state" v-else>
-          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
-          <p>No tasks created yet.</p>
+          </aside>
+
         </div>
       </section>
 
@@ -250,40 +329,6 @@
             <button class="btn-primary" @click="sendMessage">
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
             </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===== TASK CALENDAR ===== -->
-      <section v-if="activeSection === 'calendar'">
-        <div class="section-topbar">
-          <h2 class="section-heading" style="margin-bottom:0;border:none;padding-bottom:0;">Task Calendar</h2>
-          <div class="calendar-filters">
-            <select v-model="calendarMonth" @change="filterCalendarTasks">
-              <option v-for="(m,i) in monthNames" :key="i" :value="i+1">{{ m }}</option>
-            </select>
-            <select v-model="calendarYear" @change="filterCalendarTasks">
-              <option v-for="y in calendarYears" :key="y" :value="y">{{ y }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="calendar-wrap">
-          <div class="calendar-grid">
-            <div class="calendar-day header" v-for="d in weekDays" :key="d">{{ d }}</div>
-            <div v-for="blank in startDay" :key="'b'+blank" class="calendar-day blank"></div>
-            <div class="calendar-day" v-for="day in daysInMonth" :key="day">
-              <div class="day-number">{{ day }}</div>
-              <div class="events">
-                <div v-for="task in tasksForDay(day)" :key="task.id" class="event"
-                     :style="{ backgroundColor: task.status==='complete'?'#0d7a45':'#c53030' }"
-                     :title="`${task.title}\n${task.assigned_to.map(u=>u.username).join(', ')}`">
-                  {{ task.title }}
-                  <div style="font-size:9px;color:rgba(255,255,255,0.8);margin-top:1px;">
-                    {{ task.assigned_to.map(u=>u.username).join(', ') || 'Unassigned' }}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -848,6 +893,8 @@ export default {
       selectedUser: {},
       showDeleteModal: false,
       deleteTaskId: null,
+      taskCalendarFilterDate: null,
+      expandedComments: null,
       activityDate:     new Date().toISOString().split("T")[0],
       activityMemberId: "",
       teamActivity:     [],
@@ -897,11 +944,17 @@ export default {
     },
 
     filteredTasks() {
-      if (!this.headerSearch) return this.tasks
-      const t = this.headerSearch.toLowerCase()
-      return this.tasks.filter(task =>
-        task.title.toLowerCase().includes(t) || task.description.toLowerCase().includes(t)
-      )
+      let list = this.tasks
+      if (this.taskCalendarFilterDate) {
+        list = list.filter(t => t.start_date === this.taskCalendarFilterDate)
+      }
+      if (this.headerSearch) {
+        const t = this.headerSearch.toLowerCase()
+        list = list.filter(task =>
+          task.title.toLowerCase().includes(t) || task.description.toLowerCase().includes(t)
+        )
+      }
+      return list
     },
     filteredUsers() {
       if (!this.userSearch) return this.teamMembers
@@ -958,6 +1011,31 @@ export default {
 
   methods: {
     donutShade(i) { return donutShade(i) },
+
+    toggleTaskComments(taskId) { this.expandedComments = this.expandedComments === taskId ? null : taskId },
+
+    shiftTaskCalendar(dir) {
+      let m = this.calendarMonth + dir
+      let y = this.calendarYear
+      if (m < 1) { m = 12; y-- }
+      if (m > 12) { m = 1; y++ }
+      this.calendarMonth = m
+      this.calendarYear = y
+    },
+    _padDate(day) {
+      return `${this.calendarYear}-${String(this.calendarMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    },
+    selectTaskCalendarDay(day) {
+      const dateStr = this._padDate(day)
+      this.taskCalendarFilterDate = this.taskCalendarFilterDate === dateStr ? null : dateStr
+    },
+    isTaskCalendarDaySelected(day) { return this.taskCalendarFilterDate === this._padDate(day) },
+    isTaskCalendarDayToday(day) { return this._padDate(day) === this.todayDate },
+    formatChipDate(dateStr) {
+      if (!dateStr) return ''
+      const d = new Date(dateStr + 'T00:00:00')
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    },
 
     _donutCircumference() { return 2 * Math.PI * 80 },
     _donutTotalSeconds()  { return this.topApps.slice(0,6).reduce((s, a) => s + a.total_seconds, 0) },
@@ -1147,7 +1225,6 @@ export default {
       await this.apiCall("post", "group-chat-clear/")
       this.chatMessages = []
     },
-    filterCalendarTasks() {},
     tasksForDay(day) {
       return this.tasks.filter(t => {
         if (!t.start_date) return false
@@ -1306,9 +1383,7 @@ export default {
 
 <style scoped>
 /* ============================================================
-   QRM LEAD DASHBOARD v2 — tighter, sleeker, premium
-   Monochrome blue/navy identity. Active/Idle in side-by-side
-   independent panels. Elevated typography + spacing.
+   QRM LEAD DASHBOARD v3 — tasks + mini calendar, tighter cards
    ============================================================ */
 
 * { font-family:'Poppins',sans-serif; box-sizing:border-box; margin:0; padding:0; }
@@ -1414,7 +1489,7 @@ export default {
 
 /* ──────── SECTION TOPBAR ──────── */
 .section-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
-.section-heading { font-size:16px; font-weight:700; color:var(--text); letter-spacing:-.01em; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px; }
+.section-heading { font-size:16px; font-weight:700; color:var(--text); letter-spacing:-.01em; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
 .section-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); }
 .sub-heading { font-size:14px; font-weight:700; color:var(--text); margin:16px 0 10px; }
 .section-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -1423,9 +1498,11 @@ export default {
 /* ──────── BUTTONS ──────── */
 .btn-primary { padding:7px 14px; border-radius:9px; background:var(--accent); color:#fff; border:none; cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; display:inline-flex; align-items:center; gap:5px; }
 .btn-primary:hover { background:#0c87e6; transform:translateY(-1px); }
+.btn-primary.btn-xs { padding:5px 10px; font-size:11px; border-radius:7px; }
 .btn-danger { padding:7px 14px; border-radius:9px; background:#dc2626; color:#fff; border:none; cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; }
 .btn-danger:hover { background:#b91c1c; }
 .btn-danger.btn-sm { padding:5px 11px; font-size:11.5px; }
+.btn-danger.btn-xs { padding:5px 8px; font-size:11px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; }
 .btn-outline { padding:7px 14px; border-radius:9px; background:transparent; color:var(--text-muted); border:1px solid var(--border-mid); cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; }
 .btn-outline:hover { border-color:var(--accent); color:var(--accent); }
 .btn-outline-accent { padding:7px 14px; border-radius:9px; background:transparent; color:var(--accent); border:1px solid rgba(21,154,255,0.3); cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; display:inline-flex; align-items:center; gap:5px; }
@@ -1445,7 +1522,79 @@ export default {
 .panel-sub { font-size:11px; color:var(--text-muted); display:block; margin-top:2px; }
 .panel-title-row { display:flex; align-items:center; gap:8px; }
 
-/* ──────── TASKS ──────── */
+/* ──────── TASKS LAYOUT (list + calendar) ──────── */
+.tasks-layout { display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start; }
+.tasks-list-col { min-width:0; }
+.tasks-calendar-col { display:flex; flex-direction:column; gap:14px; position:sticky; top:8px; }
+
+.tasks-col-header { display:flex; align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; }
+.tasks-count-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; background:rgba(21,154,255,0.1); color:var(--accent); border-radius:10px; font-size:11px; font-weight:700; }
+.chip-clear { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:16px; background:rgba(21,154,255,0.09); color:var(--accent); border:1px solid rgba(21,154,255,0.22); font-size:11.5px; font-weight:600; cursor:pointer; transition:all .15s; }
+.chip-clear:hover { background:rgba(21,154,255,0.18); }
+
+/* Compact task list - single column, denser cards */
+.task-list-compact { grid-template-columns:1fr; gap:10px; display:grid; }
+.task-card-compact { padding:13px 15px; border-radius:13px; }
+.task-card-compact:hover { transform:translateY(-1px); }
+
+.task-header-compact { padding:7px 11px; margin-bottom:9px; border-radius:9px; }
+.task-header-compact .task-title { font-size:12.5px; }
+
+.desc-compact { font-size:12px; line-height:1.5; color:var(--text-muted); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+.task-meta-row { margin-bottom:8px; }
+.meta-pill { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-faint); background:var(--surface); border:1px solid var(--border); padding:3px 9px; border-radius:8px; font-weight:600; }
+
+.task-comments-compact { margin-bottom:8px; }
+.comments-toggle { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--accent); cursor:pointer; }
+.comments-toggle svg { transition:transform .18s; }
+.comments-toggle svg.rotated { transform:rotate(180deg); }
+
+.assigned-row { margin-bottom:10px; }
+
+.task-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
+.assign-section-compact { display:flex; gap:6px; flex:1; min-width:0; }
+.assign-section-compact select { flex:1; min-width:0; padding:6px 8px; font-size:11.5px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+
+/* ──────── MINI CALENDAR (tasks sidebar) ──────── */
+.mini-cal-card { background:var(--card); border-radius:16px; padding:16px 17px; border:1px solid var(--border); box-shadow:var(--shadow-md); }
+.mini-cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.mini-cal-nav { display:flex; gap:4px; }
+.mini-cal-nav-btn { width:22px; height:22px; border-radius:7px; background:var(--surface); border:1px solid var(--border); color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
+.mini-cal-nav-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+.mini-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+.mini-cal-day { aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:8px; font-size:11px; cursor:pointer; transition:all .15s; position:relative; gap:2px; }
+.mini-cal-dow { font-size:9px; font-weight:700; color:var(--text-faint); text-transform:uppercase; cursor:default; aspect-ratio:auto; height:18px; }
+.mini-cal-blank { cursor:default; }
+.mini-cal-daynum { font-weight:600; color:var(--text); }
+.mini-cal-day:hover:not(.mini-cal-blank):not(.mini-cal-dow) { background:rgba(21,154,255,0.08); }
+.mini-cal-day.is-today .mini-cal-daynum { color:var(--accent); font-weight:800; }
+.mini-cal-day.is-today { box-shadow:inset 0 0 0 1.5px rgba(21,154,255,0.35); }
+.mini-cal-day.is-selected { background:linear-gradient(135deg,#0b5fa0,#159aff); }
+.mini-cal-day.is-selected .mini-cal-daynum { color:#fff; }
+.mini-cal-day.has-tasks:not(.is-selected) { background:rgba(21,154,255,0.04); }
+.mini-cal-dot-row { display:flex; gap:2px; }
+.mini-cal-dot { width:4px; height:4px; border-radius:50%; }
+.mini-cal-day.is-selected .mini-cal-dot { background:#fff !important; opacity:.85; }
+
+.mini-cal-legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid var(--border); }
+.mini-cal-legend span { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:var(--text-muted); font-weight:600; }
+.mini-cal-legend i { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.dot-pending { background:#eab308; }
+.dot-progress { background:#159aff; }
+.dot-complete { background:#22c55e; }
+
+.day-task-mini-list { display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; }
+.day-task-mini-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; background:var(--surface); border:1px solid var(--border); text-decoration:none; transition:all .15s; }
+.day-task-mini-item:hover { border-color:rgba(21,154,255,0.3); background:rgba(21,154,255,0.05); }
+.dtm-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.dtm-dot.complete { background:#22c55e; }
+.dtm-dot.in_progress { background:#159aff; }
+.dtm-dot.pending { background:#eab308; }
+.dtm-title { font-size:11.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ──────── TASKS (legacy / users section cards) ──────── */
 .task-list { list-style:none; padding:0; display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
 .task-card { background:var(--card); border-radius:16px; padding:18px 20px; box-shadow:var(--shadow-md); border:1px solid var(--border); transition:transform .2s ease, box-shadow .2s ease; }
 .task-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
@@ -1455,17 +1604,17 @@ export default {
 .desc { color:var(--text-muted); line-height:1.55; margin-bottom:6px; }
 .task-meta { font-size:12px; color:var(--text-faint); }
 .task-comments { margin-top:8px; }
-.comments-list { list-style:none; padding-left:8px; font-size:12px; margin-top:4px; }
+.comments-list { list-style:none; padding-left:8px; font-size:12px; margin-top:4px; display:flex; flex-direction:column; gap:3px; }
 .assigned-section { margin:10px 0 4px; }
 .assigned-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); display:block; margin-bottom:5px; }
 .assigned-pills { display:flex; flex-wrap:wrap; gap:4px; }
 .assigned-pill { background:rgba(21,154,255,0.08); color:var(--accent); border:1px solid rgba(21,154,255,0.18); border-radius:16px; padding:2px 9px; font-size:11.5px; font-weight:600; }
-.unassigned-note { font-size:12px; color:var(--text-faint); }
+.unassigned-note { font-size:11.5px; color:var(--text-faint); }
 .assign-section { display:flex; gap:7px; margin-top:10px; }
 .assign-section select { flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12.5px; }
 .assign-btn { flex-shrink:0; }
 
-.status { padding:3px 9px; border-radius:6px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.status { padding:3px 9px; border-radius:6px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; flex-shrink:0; }
 .status.in_progress { background:#dbeafe; color:#1d4ed8; }
 .status.complete    { background:#dcfce7; color:#166534; }
 .status.pending     { background:#fef9c3; color:#854d0e; }
@@ -1504,18 +1653,6 @@ export default {
 .chat-input-wrap { display:flex; gap:8px; }
 .chat-input-wrap input { flex:1; padding:10px 13px; border-radius:10px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:13px; }
 .chat-input-wrap input:focus { outline:none; border-color:rgba(21,154,255,0.4); }
-
-/* ──────── CALENDAR ──────── */
-.calendar-filters { display:flex; gap:8px; }
-.calendar-filters select { padding:7px 11px; border-radius:9px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12.5px; }
-.calendar-wrap { background:var(--card); border-radius:16px; padding:20px; overflow-x:auto; border:1px solid var(--border); box-shadow:var(--shadow-md); }
-.calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
-.calendar-day { min-height:76px; border:1px solid var(--border); border-radius:9px; padding:5px; display:flex; flex-direction:column; background:var(--card); transition:border-color .15s; }
-.calendar-day:hover { border-color:rgba(21,154,255,0.25); }
-.calendar-day.header { font-weight:700; text-align:center; background:linear-gradient(135deg,#0b5fa0,#159aff); color:#fff; min-height:unset; padding:8px; font-size:11px; letter-spacing:.04em; border-radius:9px; }
-.calendar-day.blank { background:transparent; border:none; }
-.day-number { font-weight:700; font-size:12px; margin-bottom:3px; color:var(--text); }
-.event { padding:3px 6px; font-size:10px; border-radius:5px; color:#fff; word-break:break-word; margin-bottom:2px; box-shadow:0 1px 3px rgba(0,0,0,0.15); }
 
 /* ──────── ACTIVITY SECTION ──────── */
 .activity-section { display:flex; flex-direction:column; gap:16px; }
@@ -1788,8 +1925,6 @@ export default {
 .ss-nav-prev { left:12px; }
 .ss-nav-next { right:12px; }
 
-.ss-nav-next { right:12px; }
-
 /* ──────── MODAL ──────── */
 .modal-overlay { position:fixed; inset:0; background:rgba(4,8,16,0.6); display:flex; justify-content:center; align-items:center; z-index:100; backdrop-filter:blur(5px); }
 .modal-box { background:var(--card); padding:24px; border-radius:16px; box-shadow:var(--shadow-lg); display:flex; flex-direction:column; gap:12px; border:1px solid var(--border); min-width:260px; }
@@ -1804,11 +1939,18 @@ export default {
 .dark .tl-gantt-track { background:rgba(255,255,255,0.025); }
 .dark .tl-entry-active { background:rgba(21,154,255,0.06); }
 .dark .tl-entry-idle   { background:rgba(100,116,139,0.06); }
+.dark .mini-cal-nav-btn { border-color:rgba(255,255,255,0.07); }
+.dark .day-task-mini-item { border-color:rgba(255,255,255,0.06); }
 
 /* ──────── RESPONSIVE ──────── */
 @media screen and (max-width:1280px) {
   .desktop-bottom-grid { grid-template-columns:1fr; }
   .timeline-split-wrap { grid-template-columns:1fr 1fr; }
+}
+@media screen and (max-width:1100px) {
+  .tasks-layout { grid-template-columns:1fr; }
+  .tasks-calendar-col { position:static; flex-direction:row; flex-wrap:wrap; }
+  .tasks-calendar-col .mini-cal-card { flex:1; min-width:240px; }
 }
 @media screen and (max-width:1024px) {
   .domain-grid { grid-template-columns:repeat(2,1fr); }
@@ -1832,6 +1974,10 @@ export default {
   .header-search { flex-direction:column; align-items:flex-start; }
   .search-wrap { max-width:100%; }
   .act-page-header { flex-direction:column; }
+  .tasks-calendar-col { flex-direction:column; }
+}
+@media screen and (max-width:520px) {
+  .task-card-footer { flex-direction:column; align-items:stretch; }
+  .assign-section-compact { width:100%; }
 }
 </style>
-   
