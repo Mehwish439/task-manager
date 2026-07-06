@@ -7,7 +7,6 @@
         <p>Don't have an account? Create one and join the team.</p>
         <button class="btn-outline" @click="goToRegister">SIGN UP</button>
       </div>
-      
 
       <!-- Right Panel (Login Form) -->
       <div class="right-panel">
@@ -15,9 +14,10 @@
         <form @submit.prevent="login">
           <input v-model="username" type="text" placeholder="Username" />
           <input v-model="password" type="password" placeholder="Password" />
-          <button class="btn-primary" :disabled="!isFormValid">LOGIN</button>
+          <button class="btn-primary" :disabled="!isFormValid || loading">
+            {{ loading ? 'Signing in…' : 'LOGIN' }}
+          </button>
           <p class="error-message" v-if="error">{{ error }}</p>
-        
         </form>
       </div>
     </div>
@@ -32,7 +32,8 @@ export default {
     return {
       username: '',
       password: '',
-      error: ''
+      error: '',
+      loading: false,
     }
   },
   computed: {
@@ -43,6 +44,7 @@ export default {
   methods: {
     async login() {
       this.error = ''
+      this.loading = true
       try {
         const res = await loginUser({
           username: this.username,
@@ -55,15 +57,23 @@ export default {
         const me = await api.get('me/')
         const role = me.data.role
 
-        if (role === 'team_member') {
+        if (role === 'super_admin') {
+          this.$router.push({ name: 'SuperAdminDashboard' })
+        } else if (role === 'team_member') {
           this.$router.push({ name: 'AssignedTasks' })
         } else {
-          this.$router.push({ name: 'TaskList' }) // 
+          this.$router.push({ name: 'TaskList' })
         }
 
       } catch (err) {
         console.error(err)
-        this.error = 'Invalid username or password.'
+        // Company-suspension / not-linked errors come back as
+        // { non_field_errors: ["..."] } from MyTokenObtainPairSerializer.validate()
+        const data = err?.response?.data
+        const backendMsg = data?.non_field_errors?.[0] || data?.detail
+        this.error = backendMsg || 'Invalid username or password.'
+      } finally {
+        this.loading = false
       }
     },
     goToRegister() {
@@ -76,46 +86,70 @@ export default {
 <style scoped>
 * {
   font-family: 'Poppins', sans-serif;
+  box-sizing: border-box;
 }
+
 .container {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(to right, #dfe9f3, #ffffff);
+  background: linear-gradient(135deg, #edf0f5, #f6f8fb);
 }
+
 .card {
   display: flex;
   width: 850px;
-  background: #fff;
-  border-radius: 16px;
+  background: #ffffff;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 48px rgba(16,24,40,0.10), 0 6px 16px rgba(16,24,40,0.05);
+  border: 1px solid rgba(15,23,42,0.06);
 }
+
 .left-panel {
   flex: 1;
-  background: linear-gradient(to right, #159aff,#159aff);
-  color: white;
+  background: linear-gradient(175deg, #0a1525 0%, #0f1e34 50%, #0b1828 100%);
+  color: #fff;
   padding: 50px 30px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   text-align: center;
+  position: relative;
 }
+
+.left-panel h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 10px;
+}
+
+.left-panel p {
+  color: rgba(255,255,255,0.55);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin-bottom: 26px;
+}
+
 .btn-outline {
-  border: 2px solid white;
-  background: transparent;
-  color: white;
+  border: 1.5px solid rgba(21,154,255,0.55);
+  background: rgba(21,154,255,0.1);
+  color: #fff;
   padding: 12px 28px;
   font-weight: 600;
   border-radius: 25px;
   cursor: pointer;
-  transition: 0.3s;
+  transition: 0.2s;
+  align-self: center;
 }
+
 .btn-outline:hover {
-  background: white;
-  color: #159aff;
+  background: #159aff;
+  border-color: #159aff;
+  color: #fff;
 }
+
 .right-panel {
   flex: 1.2;
   padding: 50px 40px;
@@ -123,38 +157,61 @@ export default {
   flex-direction: column;
   justify-content: center;
 }
+
+.right-panel h2 {
+  color: #121c2d;
+  font-weight: 700;
+  margin-bottom: 22px;
+}
+
 form {
   display: flex;
   flex-direction: column;
   gap: 15px;
 }
+
 form input {
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15,23,42,0.11);
+  border-radius: 8px;
   font-size: 1rem;
+  color: #121c2d;
+  background: #f6f8fb;
+  transition: border-color .15s, box-shadow .15s;
 }
+
+form input:focus {
+  outline: none;
+  border-color: rgba(21,154,255,0.45);
+  box-shadow: 0 0 0 3px rgba(21,154,255,0.1);
+  background: #fff;
+}
+
 .btn-primary {
   background: #159aff;
-  color: white;
+  color: #fff;
   border: none;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: background 0.2s;
 }
+
 .btn-primary:hover {
-  background:#159aff;
+  background: #0c6bb8;
 }
+
 .btn-primary:disabled {
-  background: #ccc;
+  background: #cbd5e1;
   cursor: not-allowed;
 }
+
 .error-message {
   margin-top: 10px;
   text-align: center;
-  color: #159aff;
+  color: #dc2626;
   font-size: 0.95rem;
+  font-weight: 500;
 }
 </style>

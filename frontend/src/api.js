@@ -1,11 +1,7 @@
 import axios from 'axios';
 
-//  Use Vite environment variable for API URL
-// In your .env file: VITE_API_URL=http://localhost:8000/api/ (dev)
-// Production: VITE_API_URL=https://mehwishshakoor.pythonanywhere.com/api/
 const API_URL = import.meta.env.VITE_API_URL;
 
-// Create Axios instance
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -13,35 +9,37 @@ const api = axios.create({
   },
 });
 
-//  Automatically attach JWT token to every request
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// attach token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
-// ===================== AUTH =====================
-
-// Register new user
+// AUTH
 export const registerUser = (data) => api.post('register/', data);
-
-// Login user (JWT)
 export const loginUser = (data) => api.post('login/', data);
 
-// ===================== TASKS =====================
-
-// Create a new task
+// TASKS
 export const createTask = (data) => api.post('create-task/', data);
-
-// Get tasks assigned to current user
 export const getAssignedTasks = () => api.get('assigned-tasks/');
-
-// Update task status/details
 export const updateTask = (id, data) => api.put(`update-task/${id}/`, data);
+
+// SAAS
+export const signupCompany = (data) => api.post('signup/company/', data);
+export const joinViaInvite = (data) => api.post('signup/join/', data);
+
+export const listInvites = () => api.get('invites/');
+export const createInvite = (data) => api.post('invites/', data);
+export const toggleInvite = (id) => api.post(`invites/${id}/toggle/`);
+
+export const fetchAdminStats = () => api.get('admin/stats/');
+export const fetchAdminCompanies = () => api.get('admin/companies/');
+export const fetchAdminCompany = (id) => api.get(`admin/companies/${id}/`);
+export const toggleAdminCompany = (id) => api.post(`admin/companies/${id}/toggle/`);
+export const updateAdminCompanyPlan = (id, data) =>
+  api.patch(`admin/companies/${id}/plan/`, data);
 
 export default api;

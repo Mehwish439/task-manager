@@ -33,6 +33,12 @@
         <span v-if="!sidebarCollapsed">Users</span>
       </button>
 
+      <!-- NEW: Invite Employees — navigates to the standalone invite-code manager page -->
+      <button class="nav-btn" @click="$router.push('/invite-employees')">
+        <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span v-if="!sidebarCollapsed">Invite Employees</span>
+      </button>
+
       <button class="nav-btn" :class="{ active: activeSection === 'groupChat' }" @click="activeSection='groupChat'">
         <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
         <span v-if="!sidebarCollapsed">Group Chat</span>
@@ -43,6 +49,11 @@
       <button class="nav-btn create-btn" @click="goToCreateTask">
         <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         <span v-if="!sidebarCollapsed">New Task</span>
+      </button>
+
+      <button class="nav-btn logout-btn" @click="logout">
+        <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span v-if="!sidebarCollapsed">Logout</span>
       </button>
 
       <div class="theme-toggle" v-if="!sidebarCollapsed">
@@ -252,7 +263,61 @@
 
       <!-- ===== USERS ===== -->
       <section v-if="activeSection === 'users'">
-        <h2 class="section-heading">User Overview</h2>
+        <div class="section-topbar">
+          <h2 class="section-heading" style="border:none;padding-bottom:0;margin-bottom:0;">User Overview</h2>
+          <button class="btn-accent btn-sm" @click="showAddUser = !showAddUser">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            {{ showAddUser ? 'Close' : 'Add New User' }}
+          </button>
+        </div>
+
+        <!-- EXPANDABLE ADD-USER PANEL -->
+        <transition name="expand">
+          <div v-if="showAddUser" class="panel-card add-user-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-title">Create Account</span>
+                <span class="panel-sub">Adds a new team member or lead</span>
+              </div>
+            </div>
+
+            <form @submit.prevent="registerNewUser" class="add-user-form">
+              <div class="form-row">
+                <div class="form-field">
+                  <label>Username</label>
+                  <input v-model="newUser.username" type="text" placeholder="e.g. mehwish.k" />
+                </div>
+                <div class="form-field">
+                  <label>Email</label>
+                  <input v-model="newUser.email" type="email" placeholder="name@company.com" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label>Password</label>
+                  <input v-model="newUser.password" type="password" placeholder="••••••••" />
+                </div>
+                <div class="form-field">
+                  <label>Role</label>
+                  <select v-model="newUser.role">
+                    <option disabled value="">Select role</option>
+                    <option value="team_lead">Team Lead</option>
+                    <option value="team_member">Team Member</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="add-user-actions">
+                <span class="add-user-msg" :class="{ 'is-error': addUserError }">{{ addUserMessage }}</span>
+                <div style="display:flex;gap:8px;">
+                  <button type="button" class="btn-outline" @click="showAddUser = false">Cancel</button>
+                  <button type="submit" class="btn-primary" :disabled="!isNewUserValid">Create User</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </transition>
+
         <div class="user-search-wrap">
           <div class="search-wrap" style="max-width:260px">
             <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -858,6 +923,7 @@
 
 <script>
 import axios from "axios"
+import { registerUser } from "@/api"
 
 const API_BASE = import.meta.env.VITE_API_URL
 
@@ -895,6 +961,11 @@ export default {
       deleteTaskId: null,
       taskCalendarFilterDate: null,
       expandedComments: null,
+      // Add user panel
+      showAddUser: false,
+      newUser: { username: '', email: '', password: '', role: '' },
+      addUserMessage: '',
+      addUserError: false,
       activityDate:     new Date().toISOString().split("T")[0],
       activityMemberId: "",
       teamActivity:     [],
@@ -920,6 +991,10 @@ export default {
 
   computed: {
     todayDate() { return new Date().toISOString().split("T")[0] },
+
+    isNewUserValid() {
+      return this.newUser.username && this.newUser.email && this.newUser.password && this.newUser.role
+    },
 
     ssStatusClass() {
       if (!this.electronStatus) return 'ss-status-unknown'
@@ -1158,6 +1233,27 @@ export default {
       try { this.teamMembers = await this.apiCall("get", "team-members/") }
       catch (err) { console.error("Users fetch failed:", err) }
     },
+    async registerNewUser() {
+      this.addUserMessage = ''
+      this.addUserError = false
+      try {
+        const payload = {
+          username: this.newUser.username,
+          email: this.newUser.email,
+          password: this.newUser.password,
+          role: this.newUser.role
+        }
+        await registerUser(payload)
+        this.addUserMessage = 'User created successfully.'
+        this.newUser = { username: '', email: '', password: '', role: '' }
+        await this.fetchUsers()
+        setTimeout(() => { this.showAddUser = false; this.addUserMessage = '' }, 1200)
+      } catch (err) {
+        this.addUserError = true
+        this.addUserMessage = 'Failed to create user. Please try again.'
+        console.error("Register user failed:", err)
+      }
+    },
     async assignUser(taskId) {
       const userId = this.selectedUser[taskId]
       if (!userId) return alert("Select a member first")
@@ -1174,6 +1270,12 @@ export default {
     },
     cancelDelete() { this.showDeleteModal = false; this.deleteTaskId = null },
     goToCreateTask() { this.$router.push("/create-task") },
+    logout() {
+      if (!confirm("Are you sure you want to log out?")) return
+      localStorage.removeItem("access")
+      localStorage.removeItem("refresh")
+      this.$router.push("/login")
+    },
     async fetchAttendance() {
       try { this.attendance = await this.apiCall("get", "attendance/") }
       catch (err) { console.error("Attendance fetch failed:", err) }
@@ -1455,6 +1557,10 @@ export default {
 .create-btn { background:rgba(21,154,255,0.13); color:rgba(100,180,255,0.9); border:1px solid rgba(21,154,255,0.22); font-weight:600; margin-top:4px; }
 .create-btn:hover { background:rgba(21,154,255,0.24); color:#fff; }
 
+.logout-btn { background:rgba(220,38,38,0.1); color:rgba(255,140,140,0.9); border:1px solid rgba(220,38,38,0.2); font-weight:600; margin-top:8px; }
+.logout-btn:hover { background:rgba(220,38,38,0.22); color:#fff; }
+.sidebar.collapsed .logout-btn { justify-content:center; }
+
 .collapse-btn { margin-top:auto; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.55); cursor:pointer; font-size:13px; border-radius:9px; padding:8px; display:flex; align-items:center; justify-content:center; transition:all .18s; }
 .collapse-btn:hover { background:rgba(255,255,255,0.1); color:#fff; }
 
@@ -1499,6 +1605,7 @@ export default {
 .btn-primary { padding:7px 14px; border-radius:9px; background:var(--accent); color:#fff; border:none; cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; display:inline-flex; align-items:center; gap:5px; }
 .btn-primary:hover { background:#0c87e6; transform:translateY(-1px); }
 .btn-primary.btn-xs { padding:5px 10px; font-size:11px; border-radius:7px; }
+.btn-primary:disabled { background:#ccc; cursor:not-allowed; transform:none; }
 .btn-danger { padding:7px 14px; border-radius:9px; background:#dc2626; color:#fff; border:none; cursor:pointer; font-weight:600; font-size:12.5px; transition:all .15s; }
 .btn-danger:hover { background:#b91c1c; }
 .btn-danger.btn-sm { padding:5px 11px; font-size:11.5px; }
@@ -1522,6 +1629,29 @@ export default {
 .panel-sub { font-size:11px; color:var(--text-muted); display:block; margin-top:2px; }
 .panel-title-row { display:flex; align-items:center; gap:8px; }
 
+/* ──────── ADD USER PANEL ──────── */
+.add-user-panel { margin-bottom:16px; }
+.add-user-form { display:flex; flex-direction:column; gap:14px; margin-top:4px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.form-field { display:flex; flex-direction:column; gap:5px; }
+.form-field label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+.form-field input, .form-field select {
+  padding:9px 12px; border-radius:9px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text); font-size:13px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.form-field input:focus, .form-field select:focus {
+  outline:none; border-color:rgba(21,154,255,0.4); box-shadow:0 0 0 3px rgba(21,154,255,0.08);
+}
+.add-user-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:8px; border-top:1px solid var(--border); flex-wrap:wrap; }
+.add-user-msg { font-size:12px; font-weight:600; color:#16a34a; }
+.add-user-msg.is-error { color:#dc2626; }
+
+/* expand transition */
+.expand-enter-active, .expand-leave-active { transition: all .22s ease; overflow:hidden; }
+.expand-enter-from, .expand-leave-to { opacity:0; max-height:0; transform:translateY(-6px); }
+.expand-enter-to, .expand-leave-from { opacity:1; max-height:400px; }
+
 /* ──────── TASKS LAYOUT (list + calendar) ──────── */
 .tasks-layout { display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start; }
 .tasks-list-col { min-width:0; }
@@ -1534,13 +1664,13 @@ export default {
 
 /* Compact task list - single column, denser cards */
 .task-list-compact { grid-template-columns:1fr; gap:10px; display:grid; }
-.task-card-compact { padding:13px 15px; border-radius:13px; }
+.task-card-compact { padding:13px 15px; border-radius:13px; display:flex; flex-direction:column; min-height:208px; }
 .task-card-compact:hover { transform:translateY(-1px); }
 
 .task-header-compact { padding:7px 11px; margin-bottom:9px; border-radius:9px; }
 .task-header-compact .task-title { font-size:12.5px; }
 
-.desc-compact { font-size:12px; line-height:1.5; color:var(--text-muted); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.desc-compact { font-size:12px; line-height:1.5; color:var(--text-muted); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:36px; }
 
 .task-meta-row { margin-bottom:8px; }
 .meta-pill { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-faint); background:var(--surface); border:1px solid var(--border); padding:3px 9px; border-radius:8px; font-weight:600; }
@@ -1552,7 +1682,7 @@ export default {
 
 .assigned-row { margin-bottom:10px; }
 
-.task-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
+.task-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--border); margin-top:auto; }
 .assign-section-compact { display:flex; gap:6px; flex:1; min-width:0; }
 .assign-section-compact select { flex:1; min-width:0; padding:6px 8px; font-size:11.5px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); }
 
@@ -1975,9 +2105,11 @@ export default {
   .search-wrap { max-width:100%; }
   .act-page-header { flex-direction:column; }
   .tasks-calendar-col { flex-direction:column; }
+  .form-row { grid-template-columns:1fr; }
 }
 @media screen and (max-width:520px) {
   .task-card-footer { flex-direction:column; align-items:stretch; }
   .assign-section-compact { width:100%; }
 }
 </style>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
