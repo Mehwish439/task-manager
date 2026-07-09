@@ -113,7 +113,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor">
               <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V4a1 1 0 10-2 0v1.083A6 6 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1h6z"/>
             </svg>
-            <span v-if="notifications.length > 0" class="notif-count blink">{{ notifications.length }}</span>
+            <span v-if="notifications.length > 0" class="notif-count" :class="{ blink: hasUnseenNotification }">{{ notifications.length }}</span>
           </div>
 
           <div v-if="showNotifications" class="notification-panel">
@@ -153,12 +153,12 @@
             <div class="attendance-field">
               <label>Check-In Time</label>
               <input type="time" v-model="daily.manualCheckIn" :disabled="!canClockIn"/>
-              <button class="btn-primary" @click="dailyClockIn" :disabled="!canClockIn">Check In</button>
+              <button class="btn-primary" @click="dailyClockIn" :disabled="!canClockIn">{{ daily.checkInLoading ? 'Checking In...' : 'Check In' }}</button>
             </div>
             <div class="attendance-field">
               <label>Check-Out Time</label>
               <input type="time" v-model="daily.manualCheckOut" :disabled="!canClockOut"/>
-              <button class="btn-primary" @click="dailyClockOut" :disabled="!canClockOut">Check Out</button>
+              <button class="btn-primary" @click="dailyClockOut" :disabled="!canClockOut">{{ daily.checkOutLoading ? 'Checking Out...' : 'Check Out' }}</button>
               <div class="break-controls">
                 <button class="btn-outline-accent" @click="pauseWork" :disabled="isPaused || !canClockOut">Pause</button>
                 <button class="btn-accent" @click="resumeWork" :disabled="!isPaused">Resume</button>
@@ -689,6 +689,10 @@ export default {
         clockedIn: false,
         systemCheckIn: null,
         systemCheckOut: null,
+        // guard flags so a double-click (or a slow network) can't fire the
+        // check-in/check-out request twice while the first one is still in flight.
+        checkInLoading: false,
+        checkOutLoading: false,
       },
       userProfile: { username: "", email: "", password: "" },
       messages: [],
@@ -696,6 +700,13 @@ export default {
       unreadCount: 0,
       notifications: [],
       showNotifications: false,
+      // NEW: tracks whether there's a notification the user hasn't opened the
+      // panel to see yet — controls the blink animation on the bell badge.
+      hasUnseenNotification: false,
+      // NEW: dedup set so recurring reminder checks (deadline tomorrow, not
+      // checked in yet, etc.) only ever push once per day/task instead of
+      // spamming the list on every poll interval.
+      notifiedKeys: new Set(),
       _tasksLoadedOnce: false,
       _chatLoadedOnce: false,
 
@@ -748,9 +759,11 @@ export default {
   computed: {
     todayDate() { return new Date().toISOString().split("T")[0] },
 
-    canClockIn()  { return !(this.daily.clockedIn || this.daily.systemCheckIn) },
+    // Also blocked while a request for that action is already in flight,
+    // so a fast double-click can't submit the same action twice.
+    canClockIn()  { return !(this.daily.clockedIn || this.daily.systemCheckIn) && !this.daily.checkInLoading },
     canClockOut() {
-      return !!(this.daily.clockedIn || this.daily.systemCheckIn) && !this.daily.systemCheckOut
+      return !!(this.daily.clockedIn || this.daily.systemCheckIn) && !this.daily.systemCheckOut && !this.daily.checkOutLoading
     },
 
     trackingStatusLabel() {
@@ -774,7 +787,7 @@ export default {
     displayIdleFmt()       { return this._fmtSec(this.activityIdleSeconds) },
     displayActivePct()     { return this.activityActivePct },
 
-    // NEW: kanban groupings of the assigned task list — pure presentation split,
+    // Kanban groupings of the assigned task list — pure presentation split,
     // does not touch fetch/update logic.
     pendingTasks()    { return this.tasks.filter(t => t.status === 'pending') },
     inProgressTasks() { return this.tasks.filter(t => t.status === 'in_progress') },
@@ -833,7 +846,13 @@ export default {
       this.fetchMyTrackStatus()
 
       this.chatInterval        = setInterval(this.fetchChatMessages, 3000)
-      this.reminderInterval    = setInterval(this.checkReminders, 60000)
+      // NEW: also runs the "not checked in" / "checked in but not out" checks
+      // on the same interval as deadline reminders, instead of only firing
+      // checkAttendanceReminder once right after the initial fetch.
+      this.reminderInterval    = setInterval(() => {
+        this.checkReminders()
+        this.checkAttendanceReminder()
+      }, 60000)
       this.statusPollInterval  = setInterval(this.fetchMyTrackStatus, 30000)
       this.tasksInterval       = setInterval(this.fetchTasks, 30000)
       // Auto-refresh activity when on today's date
@@ -1035,37 +1054,71 @@ export default {
       }
     },
 
+    // FIX: previously, if the check-in request itself succeeded but the
+    // follow-up fetchDailyAttendance() call threw for any unrelated reason,
+    // execution fell into the catch block and showed "Check-In Failed" even
+    // though the backend had already recorded the check-in. We now only
+    // catch/report errors from the actual check-in request, and treat the
+    // refresh afterwards as best-effort. A loading guard also prevents a
+    // fast double-click from firing the request twice.
     async dailyClockIn() {
       if (!this.daily.manualCheckIn) {
         this.showInfoModal("Time Required", "Please select a check-in time.", "error")
         return
       }
+      if (this.daily.checkInLoading) return
+      this.daily.checkInLoading = true
+
       try {
         await this.apiCall("post", "attendance/check-in/", {
           manual_check_in: this.daily.manualCheckIn + ":00"
         })
-        this.showInfoModal("Checked In", "You have successfully checked in for today.", "success")
-        await this.fetchDailyAttendance()
       } catch (err) {
         const msg = err.response?.data?.error || err.response?.data?.detail || "Could not check in."
         this.showInfoModal("Check-In Failed", msg, "error")
+        this.daily.checkInLoading = false
+        return
+      }
+
+      // The check-in itself succeeded — always report success from here on.
+      this.showInfoModal("Checked In", "You have successfully checked in for today.", "success")
+      try {
+        await this.fetchDailyAttendance()
+      } catch (err) {
+        console.error("Post-check-in refresh error:", err)
+      } finally {
+        this.daily.checkInLoading = false
       }
     },
 
+    // Same fix applied to check-out.
     async dailyClockOut() {
       if (!this.daily.manualCheckOut) {
         this.showInfoModal("Time Required", "Please select a check-out time.", "error")
         return
       }
+      if (this.daily.checkOutLoading) return
+      this.daily.checkOutLoading = true
+
       try {
         await this.apiCall("post", "attendance/check-out/", {
           manual_check_out: this.daily.manualCheckOut + ":00"
         })
-        this.showInfoModal("Checked Out", "You have successfully checked out for today.", "success")
-        await this.fetchDailyAttendance()
       } catch (err) {
         const msg = err.response?.data?.error || err.response?.data?.detail || "Could not check out."
         this.showInfoModal("Check-Out Failed", msg, "error")
+        this.daily.checkOutLoading = false
+        return
+      }
+
+      // The check-out itself succeeded — always report success from here on.
+      this.showInfoModal("Checked Out", "You have successfully checked out for today.", "success")
+      try {
+        await this.fetchDailyAttendance()
+      } catch (err) {
+        console.error("Post-check-out refresh error:", err)
+      } finally {
+        this.daily.checkOutLoading = false
       }
     },
 
@@ -1181,7 +1234,14 @@ export default {
     handleLogout() { localStorage.clear(); this.$router.push("/login") },
     formatDate(dateStr)     { return dateStr ? new Date(dateStr).toLocaleDateString() : "-" },
     formatDateTime(dateStr) { return dateStr ? new Date(dateStr).toLocaleString()     : "-" },
-    toggleNotifications()   { this.showNotifications = !this.showNotifications },
+    // NEW: opening the panel marks all current notifications as "seen", so
+    // the bell badge stops blinking. The count itself (and the list) stays
+    // visible until the person clears/reads it — only the blink animation
+    // is tied to "has something new since I last opened this".
+    toggleNotifications() {
+      this.showNotifications = !this.showNotifications
+      if (this.showNotifications) this.hasUnseenNotification = false
+    },
     hideNotifications()     { this.showNotifications = false },
 
     // ── NOTIFICATIONS ──
@@ -1189,6 +1249,17 @@ export default {
       if (this.notifications[0] === text) return
       this.notifications.unshift(text)
       if (this.notifications.length > 20) this.notifications.pop()
+      // A brand-new notification just arrived — start blinking again until
+      // the person opens the panel.
+      this.hasUnseenNotification = true
+    },
+    // NEW: for recurring checks (reminders re-run every poll interval) —
+    // only fires once per unique key, so e.g. "due tomorrow" or "haven't
+    // checked in" doesn't get pushed again every 60 seconds.
+    pushNotificationOnce(key, text) {
+      if (this.notifiedKeys.has(key)) return
+      this.notifiedKeys.add(key)
+      this.pushNotification(text)
     },
     _truncate(str, maxLen) { return str?.length > maxLen ? str.slice(0, maxLen) + '…' : str || '' },
 
@@ -1198,16 +1269,32 @@ export default {
         .filter(t => !previousIds.has(t.id))
         .forEach(t => this.pushNotification(`New task assigned: "${t.title}"`))
     },
+    // NEW: also notifies when a task's deadline is tomorrow ("1 day left"),
+    // in addition to the existing "due today" notice. Both are deduped per
+    // task/day so they only ever show once.
     checkReminders() {
       const today = this.todayDate
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
       this.tasks.forEach(t => {
         if (t.status === 'complete' || !t.end_date) return
-        if (t.end_date.split('T')[0] === today) this.pushNotification(`Task "${t.title}" is due today`)
+        const due = t.end_date.split('T')[0]
+        if (due === today) {
+          this.pushNotificationOnce(`due-today-${t.id}-${today}`, `Task "${t.title}" is due today`)
+        } else if (due === tomorrow) {
+          this.pushNotificationOnce(`due-tomorrow-${t.id}-${today}`, `Task "${t.title}" is due tomorrow — deadline in 1 day`)
+        }
       })
     },
+    // NEW: also notifies when the person hasn't checked in yet by mid-morning,
+    // in addition to the existing "don't forget to check out" reminder. Both
+    // are deduped so they fire once per day, not once per minute.
     checkAttendanceReminder() {
-      if (this.daily.clockedIn && !this.daily.systemCheckOut && new Date().getHours() >= 18) {
-        this.pushNotification("Don't forget to check out for today.")
+      const hour = new Date().getHours()
+      if (!this.daily.clockedIn && hour >= 10) {
+        this.pushNotificationOnce(`no-checkin-${this.todayDate}`, "You haven't checked in yet today.")
+      }
+      if (this.daily.clockedIn && !this.daily.systemCheckOut && hour >= 18) {
+        this.pushNotificationOnce(`no-checkout-${this.todayDate}`, "Don't forget to check out for today.")
       }
     },
 
@@ -1619,6 +1706,7 @@ select { font-family:inherit; }
   .kanban-board { grid-template-columns:1fr; }
   .kanban-col-body { max-height:none; }
   .setup-cards { grid-template-columns:1fr; }
+  
 }
 @media (max-width:768px) {
   .sidebar { position:fixed; top:0; left:-260px; height:100%; margin:0; border-radius:0; transition:left .28s; }
@@ -1630,14 +1718,3 @@ select { font-family:inherit; }
   .top-header { flex-direction:column; align-items:flex-start; }
 }
 </style>
-
-.top-header { flex-direction:column; align-items:flex-start; }
-.domain-grid {grid-template-columns:1fr; }
-.emp-stat-grid { grid-template-columns:1fr; }
-@media (max-width:768px){
-  .content { padding:60px 16px 24px; }
-
-}
-.domain-grid {grid-template-columns;align-items:flex-start; }
-.emp-stat-grid {grid-template-columns:1fr; }
-.content { padding:60px 16px 24px; }

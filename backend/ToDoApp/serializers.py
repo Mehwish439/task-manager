@@ -1,8 +1,11 @@
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.db import transaction
 from .models import (
     CustomUser,
+    Company,
+    InviteCode,
     Task,
     Comment,
     Attendance,
@@ -11,7 +14,8 @@ from .models import (
     EmployeeActivity,
     AppTimeSession,
     DailyActivitySummary,
-    BrowserActivity,        # NEW
+    BrowserActivity,
+    ScreenshotActivity,
 )
 from datetime import timedelta
 from django.utils import timezone
@@ -25,11 +29,146 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
         token['role'] = user.role
+        token['company_id']   = user.company_id
+        token['company_name'] = user.company.name if user.company else None
         return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        user = self.user
+        # super_admin has no company and always allowed in
+        if user.role != 'super_admin':
+            if not user.company:
+                raise ValidationError('This account is not linked to a company.')
+            if not user.company.is_active:
+                raise ValidationError('Your company account has been suspended. Contact support.')
+        return data
 
 
 # =========================
-# USER SERIALIZERS
+# COMPANY SERIALIZERS
+# =========================
+class CompanySerializer(serializers.ModelSerializer):
+    member_count   = serializers.IntegerField(read_only=True)
+    lead_count     = serializers.IntegerField(read_only=True)
+    employee_count = serializers.IntegerField(read_only=True)
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+
+    class Meta:
+        model = Company
+        fields = [
+            'id', 'name', 'slug', 'plan', 'is_active', 'max_users',
+            'owner', 'owner_username', 'member_count', 'lead_count',
+            'employee_count', 'created_at',
+        ]
+        read_only_fields = ['id', 'slug', 'owner', 'created_at']
+
+
+class InviteCodeSerializer(serializers.ModelSerializer):
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    is_valid             = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InviteCode
+        fields = [
+            'id', 'code', 'role', 'created_by', 'created_by_username',
+            'created_at', 'expires_at', 'max_uses', 'uses',
+            'is_active', 'is_valid',
+        ]
+        read_only_fields = ['id', 'code', 'created_by', 'created_at', 'uses', 'is_valid']
+
+    def get_is_valid(self, obj):
+        return obj.is_valid()
+
+
+# =========================
+# PUBLIC SIGNUP — creates a NEW COMPANY (first user = team_lead/owner)
+# =========================
+class CompanySignupSerializer(serializers.Serializer):
+    company_name = serializers.CharField(max_length=255)
+    username     = serializers.CharField(max_length=150)
+    email        = serializers.EmailField()
+    password     = serializers.CharField(write_only=True, min_length=6)
+
+    def validate_username(self, value):
+        if CustomUser.objects.filter(username=value).exists():
+            raise ValidationError('That username is already taken.')
+        return value
+
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise ValidationError('An account with that email already exists.')
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        company = Company.objects.create(name=validated_data['company_name'])
+        user = CustomUser.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            role='team_lead',
+            company=company,
+        )
+        company.owner = user
+        company.save(update_fields=['owner'])
+        return user
+
+
+# =========================
+# PUBLIC JOIN — via invite code (employee or additional lead)
+# =========================
+class InviteJoinSerializer(serializers.Serializer):
+    invite_code = serializers.CharField(max_length=12)
+    username    = serializers.CharField(max_length=150)
+    email       = serializers.EmailField()
+    password    = serializers.CharField(write_only=True, min_length=6)
+
+    def validate_username(self, value):
+        if CustomUser.objects.filter(username=value).exists():
+            raise ValidationError('That username is already taken.')
+        return value
+
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise ValidationError('An account with that email already exists.')
+        return value
+
+    def validate_invite_code(self, value):
+        try:
+            invite = InviteCode.objects.select_related('company').get(code=value.strip().upper())
+        except InviteCode.DoesNotExist:
+            raise ValidationError('Invalid invite code.')
+        if not invite.is_valid():
+            raise ValidationError('This invite code has expired or is no longer active.')
+        if not invite.company.is_active:
+            raise ValidationError('This company account is currently suspended.')
+        if invite.company.members.count() >= invite.company.max_users:
+            raise ValidationError('This company has reached its user limit. Contact your team lead.')
+        self._invite = invite
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        invite = self._invite
+        user = CustomUser.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            role=invite.role,
+            company=invite.company,
+        )
+        invite.uses += 1
+        if invite.max_uses and invite.uses >= invite.max_uses:
+            invite.is_active = False
+        invite.save(update_fields=['uses', 'is_active'])
+        return user
+
+
+# =========================
+# INTERNAL REGISTER — used by a logged-in Team Lead's "Add New User" panel.
+# Company is forced to request.user.company; a lead can only create users
+# inside their own company. Public signup no longer uses this endpoint.
 # =========================
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,14 +176,32 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ('username', 'email', 'password', 'role')
         extra_kwargs = {'password': {'write_only': True}}
 
+    def validate_role(self, value):
+        if value not in ('team_lead', 'team_member'):
+            raise ValidationError('Invalid role.')
+        return value
+
     def create(self, validated_data):
-        return CustomUser.objects.create_user(**validated_data)
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated or request.user.role != 'team_lead':
+            raise PermissionDenied('Only a team lead can add users this way.')
+        company = request.user.company
+        if not company:
+            raise ValidationError('Your account is not linked to a company.')
+        if company.members.count() >= company.max_users:
+            raise ValidationError('User limit reached for your plan. Upgrade to add more users.')
+        return CustomUser.objects.create_user(company=company, **validated_data)
 
 
+# =========================
+# USER SERIALIZERS
+# =========================
 class UserSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.name', read_only=True)
+
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'role']
+        fields = ['id', 'username', 'role', 'company', 'company_name']
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -60,7 +217,6 @@ class RecursiveField(serializers.Serializer):
     def to_representation(self, value):
         serializer = self.parent.parent.__class__(value, context=self.context)
         return serializer.data
-
 
 class CommentSerializer(serializers.ModelSerializer):
     author_username = serializers.CharField(source='author.username', read_only=True)
@@ -141,8 +297,20 @@ class BreakSerializer(serializers.ModelSerializer):
 class AttendanceSerializer(serializers.ModelSerializer):
     user                      = serializers.CharField(source='user.username', read_only=True)
     role                      = serializers.CharField(source='user.role', read_only=True)
-    worked_hours              = serializers.FloatField(read_only=True)
-    manual_difference_minutes = serializers.IntegerField(read_only=True)
+
+    # FIX: these were plain FloatField/IntegerField(read_only=True) with no
+    # `source`/`get_*`, so DRF fell back to `getattr(obj, 'worked_hours')` and
+    # `getattr(obj, 'manual_difference_minutes')` — i.e. whatever @property is
+    # defined on the Attendance model. Right after check-in, system_check_out
+    # is still None, and that property does arithmetic like
+    # `(system_check_out - system_check_in).total_seconds()`, which raises
+    # TypeError on None and produced an uncaught 500 on /attendance/check-in/.
+    # Check-out never showed this because both timestamps are set by then.
+    # Converted to SerializerMethodFields that compute the same values but
+    # degrade to 0 / None instead of crashing when check-out hasn't happened.
+    worked_hours              = serializers.SerializerMethodField()
+    manual_difference_minutes = serializers.SerializerMethodField()
+
     total_break_hours         = serializers.SerializerMethodField()
     last_break_duration_minutes = serializers.SerializerMethodField()
     breaks                    = BreakSerializer(many=True, read_only=True)
@@ -174,6 +342,36 @@ class AttendanceSerializer(serializers.ModelSerializer):
         if obj.created_at:
             return timezone.localtime(obj.created_at).strftime("%Y-%m-%d %H:%M:%S")
         return None
+
+    def get_worked_hours(self, obj):
+        # No check-out yet (fresh check-in) -> nothing worked out, return 0
+        # instead of blowing up on `None - datetime`.
+        if not obj.system_check_in or not obj.system_check_out:
+            return 0.0
+        total_break_seconds = sum(
+            ((b.break_end or timezone.now()) - b.break_start).total_seconds()
+            for b in obj.breaks.all()
+        )
+        worked_seconds = (obj.system_check_out - obj.system_check_in).total_seconds() - total_break_seconds
+        return round(max(worked_seconds, 0) / 3600, 2)
+
+    def get_manual_difference_minutes(self, obj):
+        # Difference between manual (user-entered) and system check-in times,
+        # in minutes. Falls back to None if either side is missing instead of
+        # raising, and mirrors that same guard for check-out-based diffs.
+        try:
+            if obj.manual_check_in and obj.system_check_in:
+                sys_local = timezone.localtime(obj.system_check_in).time()
+                manual = obj.manual_check_in
+                if hasattr(manual, 'hour'):
+                    diff_seconds = (
+                        (manual.hour * 3600 + manual.minute * 60 + manual.second)
+                        - (sys_local.hour * 3600 + sys_local.minute * 60 + sys_local.second)
+                    )
+                    return int(diff_seconds / 60)
+        except (TypeError, AttributeError):
+            pass
+        return 0
 
     def get_total_break_hours(self, obj):
         total_seconds = sum(
@@ -209,6 +407,7 @@ class TaskCalendarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = ['id', 'title', 'status', 'start_date', 'end_date', 'assigned_to']
+
 
 
 # =========================
@@ -252,10 +451,10 @@ class AppTimeSessionSerializer(serializers.ModelSerializer):
 # DAILY ACTIVITY SUMMARY SERIALIZER
 # =========================
 class DailyActivitySummarySerializer(serializers.ModelSerializer):
-    username             = serializers.CharField(source="user.username", read_only=True)
+    username              = serializers.CharField(source="user.username", read_only=True)
     active_time_formatted = serializers.SerializerMethodField()
-    idle_time_formatted  = serializers.SerializerMethodField()
-    active_percentage    = serializers.SerializerMethodField()
+    idle_time_formatted   = serializers.SerializerMethodField()
+    active_percentage     = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyActivitySummary
@@ -284,23 +483,23 @@ class DailyActivitySummarySerializer(serializers.ModelSerializer):
 # TEAM ACTIVITY SUMMARY SERIALIZER
 # =========================
 class TeamMemberActivitySerializer(serializers.Serializer):
-    user_id              = serializers.IntegerField()
-    username             = serializers.CharField()
-    date                 = serializers.DateField()
-    total_active_seconds = serializers.IntegerField()
-    total_idle_seconds   = serializers.IntegerField()
-    total_pings          = serializers.IntegerField()
-    top_app              = serializers.CharField(allow_null=True)
-    active_percentage    = serializers.FloatField()
+    user_id               = serializers.IntegerField()
+    username              = serializers.CharField()
+    date                  = serializers.DateField()
+    total_active_seconds  = serializers.IntegerField()
+    total_idle_seconds    = serializers.IntegerField()
+    total_pings           = serializers.IntegerField()
+    top_app               = serializers.CharField(allow_null=True)
+    active_percentage     = serializers.FloatField()
     active_time_formatted = serializers.CharField()
-    app_breakdown        = AppTimeSessionSerializer(many=True)
+    app_breakdown         = AppTimeSessionSerializer(many=True)
 
 
 # =========================
-# BROWSER ACTIVITY SERIALIZER  (NEW)
+# BROWSER ACTIVITY SERIALIZER
 # =========================
 class BrowserActivitySerializer(serializers.ModelSerializer):
-    username     = serializers.CharField(source='user.username', read_only=True)
+    username       = serializers.CharField(source='user.username', read_only=True)
     time_formatted = serializers.SerializerMethodField()
 
     class Meta:
@@ -321,3 +520,33 @@ class BrowserActivitySerializer(serializers.ModelSerializer):
         if h > 0: return f"{h}h {m}m"
         if m > 0: return f"{m}m {s % 60}s"
         return f"{s}s"
+
+
+# =========================
+# SCREENSHOT ACTIVITY SERIALIZER
+# =========================
+class ScreenshotActivitySerializer(serializers.ModelSerializer):
+    username  = serializers.CharField(source="user.username", read_only=True)
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScreenshotActivity
+        fields = [
+            "id", "user", "username",
+            "image", "image_url",
+            "timestamp", "created_at",
+        ]
+        read_only_fields = ["id", "created_at", "username", "image_url"]
+
+    def get_image_url(self, obj):
+        image = (obj.image or '').strip()
+        if not image:
+            return ''
+        if image.startswith('data:') or image.startswith('http://') or image.startswith('https://'):
+            return image
+        if image.startswith('iVBOR'):
+            return f'data:image/png;base64,{image}'
+        elif image.startswith('/9j/'):
+            return f'data:image/jpeg;base64,{image}'
+        else:
+            return f'data:image/png;base64,{image}'
