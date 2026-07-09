@@ -14,6 +14,31 @@
         <span class="user-role">{{ userProfile.email }}</span>
       </div>
 
+      <!-- QUICK SETUP: tracker exe + chrome extension -->
+      <div class="quick-setup">
+        <a
+          class="quick-setup-btn"
+          :href="downloadLinks.trackerExeUrl"
+          :download="downloadLinks.trackerFileName"
+          title="Download the desktop tracker — runs automatically after your first login"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          <span>Desktop Tracker</span>
+          <span class="quick-setup-tag">.exe</span>
+        </a>
+        <a
+          class="quick-setup-btn"
+          :href="downloadLinks.extensionUrl"
+          target="_blank"
+          rel="noopener"
+          title="Add the QRM browser extension for accurate web activity tracking"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+          <span>Browser Extension</span>
+          <span class="quick-setup-tag quick-setup-tag-ext">Add</span>
+        </a>
+      </div>
+
       <div class="nav-group">
         <span class="nav-group-label">Workspace</span>
       </div>
@@ -147,41 +172,135 @@
           </div>
         </section>
 
-        <!-- TASKS -->
+        <!-- TASKS — KANBAN: Pending / In Progress / Completed -->
         <section v-if="selectedTab === 'tasks'" class="tasks-layout">
-          <div class="panel-card tasks-main-col">
-            <div class="panel-header"><span class="panel-title">Your Assigned Tasks</span></div>
-            <ul v-if="tasks.length" class="task-grid task-grid-compact task-grid-scroll">
-              <li v-for="task in tasks" :key="task.id" class="task-card task-card-compact">
-                <div class="task-header">
-                  <strong class="task-title">{{ task.title }}</strong>
-                  <span class="status" :class="task.status">{{ task.status.replace('_',' ') }}</span>
+          <div class="tasks-main-col">
+            <div class="kanban-header-row">
+              <span class="panel-title">Your Assigned Tasks</span>
+            </div>
+
+            <div class="kanban-board">
+
+              <!-- PENDING -->
+              <div class="kanban-col kanban-col-pending">
+                <div class="kanban-col-header">
+                  <span class="kanban-col-dot"></span>
+                  <span class="kanban-col-title">Pending</span>
+                  <span class="kanban-col-badge">{{ pendingTasks.length }}</span>
                 </div>
-                <div class="task-desc-card">
-                  <p class="desc">{{ task.description }}</p>
-                  <p class="task-meta"><strong>Start:</strong> {{ formatDate(task.start_date) }} &nbsp;·&nbsp; <strong>End:</strong> {{ formatDate(task.end_date) }}</p>
+                <div class="kanban-col-body">
+                  <div v-for="task in pendingTasks" :key="task.id" class="task-card task-card-compact">
+                    <div class="task-header task-header-pending">
+                      <strong class="task-title">{{ task.title }}</strong>
+                    </div>
+                    <div class="task-desc-card">
+                      <p class="desc">{{ task.description }}</p>
+                      <p class="task-meta"><strong>Start:</strong> {{ formatDate(task.start_date) }} &nbsp;·&nbsp; <strong>End:</strong> {{ formatDate(task.end_date) }}</p>
+                    </div>
+                    <div v-if="task.attachment_url" class="task-attachment">
+                      <a :href="task.attachment_url" target="_blank" download>Download Attachment</a>
+                    </div>
+                    <select v-model="task.status" @change="updateTaskStatus(task)" class="status-select">
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="complete">Complete</option>
+                    </select>
+                    <button class="comment-toggle-btn" @click="toggleComments(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                      <span>{{ openComments[task.id] ? 'Hide Comments' : 'Show Comments' }}</span>
+                      <svg class="comment-toggle-chevron" :class="{ rotated: openComments[task.id] }" xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="comment-box" v-if="openComments[task.id]">
+                      <CommentListCreate :taskId="task.id" :current-user="userProfile.username" @refresh="fetchTasks"/>
+                    </div>
+                  </div>
+                  <div class="kanban-empty" v-if="!pendingTasks.length">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                    <p>Nothing pending.</p>
+                  </div>
                 </div>
-                <div v-if="task.attachment_url" class="task-attachment">
-                  <a :href="task.attachment_url" target="_blank" download>Download Attachment</a>
+              </div>
+
+              <!-- IN PROGRESS -->
+              <div class="kanban-col kanban-col-progress">
+                <div class="kanban-col-header">
+                  <span class="kanban-col-dot"></span>
+                  <span class="kanban-col-title">In Progress</span>
+                  <span class="kanban-col-badge">{{ inProgressTasks.length }}</span>
                 </div>
-                <select v-model="task.status" @change="updateTaskStatus(task)" class="status-select">
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="complete">Complete</option>
-                </select>
-                <button class="comment-toggle-btn" @click="toggleComments(task.id)">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                  <span>{{ openComments[task.id] ? 'Hide Comments' : 'Show Comments' }}</span>
-                  <svg class="comment-toggle-chevron" :class="{ rotated: openComments[task.id] }" xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                </button>
-                <div class="comment-box" v-if="openComments[task.id]">
-                  <CommentListCreate :taskId="task.id" :current-user="userProfile.username" @refresh="fetchTasks"/>
+                <div class="kanban-col-body">
+                  <div v-for="task in inProgressTasks" :key="task.id" class="task-card task-card-compact">
+                    <div class="task-header task-header-progress">
+                      <strong class="task-title">{{ task.title }}</strong>
+                    </div>
+                    <div class="task-desc-card">
+                      <p class="desc">{{ task.description }}</p>
+                      <p class="task-meta"><strong>Start:</strong> {{ formatDate(task.start_date) }} &nbsp;·&nbsp; <strong>End:</strong> {{ formatDate(task.end_date) }}</p>
+                    </div>
+                    <div v-if="task.attachment_url" class="task-attachment">
+                      <a :href="task.attachment_url" target="_blank" download>Download Attachment</a>
+                    </div>
+                    <select v-model="task.status" @change="updateTaskStatus(task)" class="status-select">
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="complete">Complete</option>
+                    </select>
+                    <button class="comment-toggle-btn" @click="toggleComments(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                      <span>{{ openComments[task.id] ? 'Hide Comments' : 'Show Comments' }}</span>
+                      <svg class="comment-toggle-chevron" :class="{ rotated: openComments[task.id] }" xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="comment-box" v-if="openComments[task.id]">
+                      <CommentListCreate :taskId="task.id" :current-user="userProfile.username" @refresh="fetchTasks"/>
+                    </div>
+                  </div>
+                  <div class="kanban-empty" v-if="!inProgressTasks.length">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                    <p>Nothing in progress.</p>
+                  </div>
                 </div>
-              </li>
-            </ul>
-            <div class="empty-state" v-else>
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
-              <p>No assigned tasks.</p>
+              </div>
+
+              <!-- COMPLETED -->
+              <div class="kanban-col kanban-col-complete">
+                <div class="kanban-col-header">
+                  <span class="kanban-col-dot"></span>
+                  <span class="kanban-col-title">Completed</span>
+                  <span class="kanban-col-badge">{{ completeTasks.length }}</span>
+                </div>
+                <div class="kanban-col-body">
+                  <div v-for="task in completeTasks" :key="task.id" class="task-card task-card-compact">
+                    <div class="task-header task-header-complete">
+                      <strong class="task-title">{{ task.title }}</strong>
+                    </div>
+                    <div class="task-desc-card">
+                      <p class="desc">{{ task.description }}</p>
+                      <p class="task-meta"><strong>Start:</strong> {{ formatDate(task.start_date) }} &nbsp;·&nbsp; <strong>End:</strong> {{ formatDate(task.end_date) }}</p>
+                    </div>
+                    <div v-if="task.attachment_url" class="task-attachment">
+                      <a :href="task.attachment_url" target="_blank" download>Download Attachment</a>
+                    </div>
+                    <select v-model="task.status" @change="updateTaskStatus(task)" class="status-select">
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="complete">Complete</option>
+                    </select>
+                    <button class="comment-toggle-btn" @click="toggleComments(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8-1.64 0-3.173-.4-4.5-1.1L3 21l1.1-4.5C3.4 15.173 3 13.64 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                      <span>{{ openComments[task.id] ? 'Hide Comments' : 'Show Comments' }}</span>
+                      <svg class="comment-toggle-chevron" :class="{ rotated: openComments[task.id] }" xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="comment-box" v-if="openComments[task.id]">
+                      <CommentListCreate :taskId="task.id" :current-user="userProfile.username" @refresh="fetchTasks"/>
+                    </div>
+                  </div>
+                  <div class="kanban-empty" v-if="!completeTasks.length">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                    <p>Nothing completed yet.</p>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -470,6 +589,43 @@
         <!-- PROFILE -->
         <section v-if="selectedTab === 'profile'" class="panel-card">
           <div class="panel-header"><span class="panel-title">Profile</span></div>
+
+          <!-- SETUP TRACKING TOOLS -->
+          <div class="setup-panel">
+            <div class="setup-panel-head">
+              <span class="setup-panel-title">Setup Tracking Tools</span>
+              <span class="setup-panel-sub">Install both once — the tracker launches on its own after your next login.</span>
+            </div>
+            <div class="setup-cards">
+              <a class="setup-card" :href="downloadLinks.trackerExeUrl" :download="downloadLinks.trackerFileName">
+                <div class="setup-card-icon setup-card-icon-blue">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                </div>
+                <div class="setup-card-body">
+                  <span class="setup-card-title">Desktop Tracker <span class="setup-card-ver">{{ downloadLinks.trackerVersion }}</span></span>
+                  <span class="setup-card-desc">Windows installer — runs automatically after your first login, no need to reopen it.</span>
+                </div>
+                <span class="setup-card-cta">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  Download .exe
+                </span>
+              </a>
+              <a class="setup-card" :href="downloadLinks.extensionUrl" target="_blank" rel="noopener">
+                <div class="setup-card-icon setup-card-icon-navy">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+                </div>
+                <div class="setup-card-body">
+                  <span class="setup-card-title">Browser Extension</span>
+                  <span class="setup-card-desc">Records site visits so your browser activity shows up accurately on your dashboard.</span>
+                </div>
+                <span class="setup-card-cta setup-card-cta-navy">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  Add to Chrome
+                </span>
+              </a>
+            </div>
+          </div>
+
           <div class="profile-form">
             <div class="form-field">
               <label>Username</label>
@@ -572,6 +728,16 @@ export default {
       statusPollInterval: null,
       activityPollInterval: null,
 
+      // Desktop tracker / browser extension setup links
+      // NOTE: point trackerExeUrl at the hosted installer and extensionUrl at the
+      // Chrome Web Store (or internal) listing once published.
+      downloadLinks: {
+        trackerExeUrl:   "/downloads/QRM-Desktop-Tracker-Setup.exe",
+        trackerFileName: "QRM-Desktop-Tracker-Setup.exe",
+        trackerVersion:  "v1.0",
+        extensionUrl:    "https://chrome.google.com/webstore/detail/qrm-activity-tracker/REPLACE_WITH_EXTENSION_ID",
+      },
+
       // Intervals
       chatInterval:     null,
       reminderInterval: null,
@@ -607,6 +773,12 @@ export default {
     displayActiveFmt()     { return this._fmtSec(this.activityActiveSeconds) },
     displayIdleFmt()       { return this._fmtSec(this.activityIdleSeconds) },
     displayActivePct()     { return this.activityActivePct },
+
+    // NEW: kanban groupings of the assigned task list — pure presentation split,
+    // does not touch fetch/update logic.
+    pendingTasks()    { return this.tasks.filter(t => t.status === 'pending') },
+    inProgressTasks() { return this.tasks.filter(t => t.status === 'in_progress') },
+    completeTasks()   { return this.tasks.filter(t => t.status === 'complete') },
 
     // Weekly hours from history (last 7 days with data)
     weeklyActiveSeconds() {
@@ -1047,13 +1219,14 @@ export default {
 </script>
 
 <style scoped>
-/* QRM EMPLOYEE DASHBOARD */
+/* QRM EMPLOYEE DASHBOARD — v2: kanban tasks + setup/downloads + sleeker spacing */
 * { font-family:'Poppins',sans-serif; box-sizing:border-box; margin:0; padding:0; }
 
 .light {
   --bg:#edf0f5; --surface:#f6f8fb; --card:#ffffff; --text:#121c2d;
   --text-muted:#64748b; --text-faint:#94a3b8; --border:rgba(15,23,42,0.07);
   --border-mid:rgba(15,23,42,0.11); --accent:#159aff; --accent-deep:#0c6bb8;
+  --pending:#eab308; --progress:#159aff; --complete:#22c55e;
   --shadow-xs:0 1px 2px rgba(16,24,40,0.05); --shadow-sm:0 1px 3px rgba(16,24,40,0.06);
   --shadow-md:0 4px 16px rgba(16,24,40,0.07); --shadow-lg:0 20px 48px rgba(16,24,40,0.10);
   --sidebar-bg:linear-gradient(175deg,#0a1525 0%,#0f1e34 50%,#0b1828 100%);
@@ -1062,6 +1235,7 @@ export default {
   --bg:#080d15; --surface:#0d1420; --card:#111825; --text:#e8edf5;
   --text-muted:#7b8fa8; --text-faint:#4a5568; --border:rgba(255,255,255,0.065);
   --border-mid:rgba(255,255,255,0.10); --accent:#159aff; --accent-deep:#0c6bb8;
+  --pending:#eab308; --progress:#159aff; --complete:#22c55e;
   --shadow-xs:0 1px 2px rgba(0,0,0,0.35); --shadow-sm:0 1px 3px rgba(0,0,0,0.4);
   --shadow-md:0 6px 20px rgba(0,0,0,0.4); --shadow-lg:0 24px 64px rgba(0,0,0,0.55);
   --sidebar-bg:linear-gradient(175deg,#050a12 0%,#0a1220 50%,#060c18 100%);
@@ -1071,10 +1245,25 @@ export default {
 
 /* SIDEBAR */
 .sidebar { width:230px; margin:12px; border-radius:20px; padding:20px 14px 16px; color:#fff; background:var(--sidebar-bg); box-shadow:0 20px 60px rgba(5,12,24,0.5),inset 0 1px 0 rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.045); display:flex; flex-direction:column; gap:4px; position:relative; z-index:11; flex-shrink:0; }
-.user-info { display:flex; flex-direction:column; align-items:center; padding-bottom:16px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.user-info { display:flex; flex-direction:column; align-items:center; padding-bottom:14px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06); }
 .avatar-circle { width:42px; height:42px; border-radius:50%; margin-bottom:8px; display:flex; align-items:center; justify-content:center; background:rgba(21,154,255,0.16); color:#9bd2ff; border:2px solid rgba(21,154,255,0.5); box-shadow:0 0 0 4px rgba(21,154,255,0.1); flex-shrink:0; }
 .username { font-weight:700; font-size:12.5px; color:#f0f4fa; text-align:center; }
 .user-role { font-size:10.5px; color:rgba(255,255,255,0.4); margin-top:2px; font-weight:500; text-align:center; word-break:break-all; }
+
+/* QUICK SETUP BUTTONS (sidebar) */
+.quick-setup { display:flex; flex-direction:column; gap:6px; padding:10px 4px 12px; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.quick-setup-btn {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:10px;
+  background:rgba(21,154,255,0.1); border:1px solid rgba(21,154,255,0.2);
+  color:rgba(210,235,255,0.92); font-size:11px; font-weight:600;
+  text-decoration:none; transition:all .16s ease;
+}
+.quick-setup-btn:hover { background:rgba(21,154,255,0.2); color:#fff; transform:translateY(-1px); }
+.quick-setup-btn span:first-of-type { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.quick-setup-tag { font-size:9px; font-weight:700; padding:2px 6px; border-radius:6px; background:rgba(255,255,255,0.14); color:#fff; flex-shrink:0; }
+.quick-setup-tag-ext { background:rgba(34,197,94,0.28); color:#bdf5cf; }
+
 .nav-group { padding:4px 4px 2px; }
 .nav-group-label { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:rgba(255,255,255,0.28); }
 .sidebar-nav { display:flex; flex-direction:column; gap:4px; }
@@ -1167,32 +1356,60 @@ export default {
 .status.in_progress { background:#dbeafe; color:#1d4ed8; }
 .status.complete    { background:#dcfce7; color:#166534; }
 
-/* TASKS */
-.tasks-layout { display:grid; grid-template-columns:2fr 1fr; gap:16px; align-items:start; }
-.tasks-main-col { min-width:0; }
+/* ══════════════════════════════════════════════
+   TASKS — KANBAN BOARD (Pending / In Progress / Completed)
+   ══════════════════════════════════════════════ */
+.tasks-layout { display:grid; grid-template-columns:1fr 260px; gap:16px; align-items:start; }
+.tasks-main-col { min-width:0; display:flex; flex-direction:column; gap:12px; }
 .tasks-calendar-col { min-width:0; position:sticky; top:0; }
-.task-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; list-style:none; }
-.task-grid-compact { grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
-.task-grid-scroll { max-height:640px; overflow-y:auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:var(--border-mid) transparent; }
-.task-card { background:var(--surface); border-radius:15px; padding:16px 18px; box-shadow:var(--shadow-sm); border:1px solid var(--border); display:flex; flex-direction:column; gap:9px; }
-.task-card-compact { padding:11px 13px; gap:6px; border-radius:12px; }
-.task-header { display:flex; justify-content:space-between; align-items:center; padding:9px 13px; border-radius:10px; background:linear-gradient(135deg,var(--accent-deep),var(--accent)); color:#fff; }
-.task-card-compact .task-header { padding:6px 10px; border-radius:8px; }
-.task-title { font-weight:700; font-size:13px; }
-.task-card-compact .task-title { font-size:11.5px; }
-.task-desc-card { background:rgba(21,154,255,0.04); border-radius:10px; padding:11px 13px; border:1px solid rgba(21,154,255,0.08); font-size:12.5px; }
-.task-card-compact .task-desc-card { padding:8px 10px; font-size:11px; border-radius:8px; }
-.desc { color:var(--text-muted); line-height:1.55; margin-bottom:6px; }
-.task-card-compact .desc { -webkit-line-clamp:2; display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
-.task-meta { font-size:11.5px; color:var(--text-faint); }
-.task-attachment a { color:var(--accent); font-size:12px; }
-.status-select { padding:7px 10px; border-radius:9px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12.5px; }
+
+.kanban-header-row { display:flex; align-items:center; justify-content:space-between; padding:2px 2px 8px; border-bottom:1px solid var(--border); }
+
+.kanban-board { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:start; }
+
+.kanban-col { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:12px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+
+.kanban-col-header { display:flex; align-items:center; gap:7px; padding:6px 8px 10px; border-bottom:1px solid var(--border); }
+.kanban-col-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.kanban-col-title { font-size:12.5px; font-weight:700; color:var(--text); letter-spacing:-.005em; flex:1; }
+.kanban-col-badge { font-size:10.5px; font-weight:700; min-width:20px; height:20px; padding:0 6px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; }
+
+.kanban-col-pending .kanban-col-dot   { background:var(--pending); box-shadow:0 0 0 3px rgba(234,179,8,0.16); }
+.kanban-col-progress .kanban-col-dot  { background:var(--progress); box-shadow:0 0 0 3px rgba(21,154,255,0.16); }
+.kanban-col-complete .kanban-col-dot  { background:var(--complete); box-shadow:0 0 0 3px rgba(34,197,94,0.16); }
+.kanban-col-pending .kanban-col-badge  { background:rgba(234,179,8,0.12); color:#92660b; }
+.kanban-col-progress .kanban-col-badge { background:rgba(21,154,255,0.1); color:var(--accent); }
+.kanban-col-complete .kanban-col-badge { background:rgba(34,197,94,0.12); color:#15803d; }
+.dark .kanban-col-pending .kanban-col-badge  { color:#eab308; }
+.dark .kanban-col-complete .kanban-col-badge { color:#4ade80; }
+.kanban-col-pending  { border-top:3px solid var(--pending); }
+.kanban-col-progress { border-top:3px solid var(--progress); }
+.kanban-col-complete { border-top:3px solid var(--complete); }
+
+.kanban-col-body { display:flex; flex-direction:column; gap:10px; max-height:calc(100vh - 260px); overflow-y:auto; padding-right:2px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.kanban-col-body::-webkit-scrollbar { width:4px; }
+.kanban-col-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+.kanban-empty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:26px 12px; color:var(--text-muted); font-size:11.5px; text-align:center; }
+
+/* TASK CARDS */
+.task-card { background:var(--card); border-radius:14px; padding:13px 14px; box-shadow:var(--shadow-sm); border:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
+.task-card-compact { padding:11px 13px; gap:7px; border-radius:13px; }
+.task-header { display:flex; justify-content:space-between; align-items:center; padding:8px 11px; border-radius:9px; color:#fff; }
+.task-header-pending  { background:linear-gradient(135deg,#a9740a,#eab308); box-shadow:0 3px 10px rgba(234,179,8,0.22); }
+.task-header-progress { background:linear-gradient(135deg,var(--accent-deep),var(--accent)); box-shadow:0 3px 10px rgba(21,154,255,0.2); }
+.task-header-complete { background:linear-gradient(135deg,#15803d,#22c55e); box-shadow:0 3px 10px rgba(34,197,94,0.2); }
+.task-title { font-weight:700; font-size:12px; line-height:1.35; }
+.task-desc-card { background:rgba(21,154,255,0.04); border-radius:9px; padding:9px 11px; border:1px solid rgba(21,154,255,0.08); font-size:11.5px; }
+.desc { color:var(--text-muted); line-height:1.5; margin-bottom:5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.task-meta { font-size:10.5px; color:var(--text-faint); }
+.task-attachment a { color:var(--accent); font-size:11.5px; }
+.status-select { padding:6px 9px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:11.5px; width:100%; }
 .comment-toggle-btn { display:flex; align-items:center; gap:6px; width:100%; padding:6px 9px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; font-size:10.5px; font-weight:600; transition:all .15s; }
 .comment-toggle-btn:hover { border-color:rgba(21,154,255,0.3); color:var(--accent); }
 .comment-toggle-btn span { flex:1; text-align:left; }
 .comment-toggle-chevron { transition:transform .18s; flex-shrink:0; }
 .comment-toggle-chevron.rotated { transform:rotate(180deg); }
-.comment-box { margin-top:2px; border-top:1px dashed var(--border); padding-top:8px; max-height:260px; overflow-y:auto; }
+.comment-box { margin-top:2px; border-top:1px dashed var(--border); padding-top:8px; max-height:220px; overflow-y:auto; }
 .empty-state { display:flex; flex-direction:column; align-items:center; gap:10px; padding:36px 24px; color:var(--text-muted); font-size:13px; text-align:center; }
 
 /* CALENDAR */
@@ -1215,9 +1432,9 @@ export default {
 .calendar-grid-mini .events { flex-direction:row; flex-wrap:wrap; gap:2px; }
 .event { font-size:.72rem; padding:2px 5px; border-radius:5px; color:#fff; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .calendar-grid-mini .event { width:6px; height:6px; padding:0; border-radius:50%; }
-.event.pending     { background:#b45309; }
-.event.in_progress { background:var(--accent); }
-.event.complete    { background:#15803d; }
+.event.pending     { background:var(--pending); }
+.event.in_progress { background:var(--progress); }
+.event.complete    { background:var(--complete); }
 .task-list { list-style:none; max-height:420px; overflow-y:auto; }
 .task-list li { background:var(--surface); padding:13px 15px; border-radius:11px; margin-bottom:8px; border:1px solid var(--border); }
 .task-list h3 { font-size:13.5px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px; margin-bottom:5px; }
@@ -1347,7 +1564,29 @@ export default {
 .chat-input-wrap { display:flex; gap:8px; }
 .chat-input-wrap input { flex:1; padding:10px 13px; border-radius:10px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:13px; }
 
-/* PROFILE */
+/* PROFILE / SETUP */
+.setup-panel { margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid var(--border); }
+.setup-panel-head { display:flex; flex-direction:column; gap:3px; margin-bottom:14px; }
+.setup-panel-title { font-size:13.5px; font-weight:700; color:var(--text); }
+.setup-panel-sub { font-size:11.5px; color:var(--text-muted); }
+.setup-cards { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.setup-card {
+  display:flex; align-items:center; gap:13px;
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:14px 16px; text-decoration:none; color:var(--text);
+  transition:all .18s ease;
+}
+.setup-card:hover { border-color:rgba(21,154,255,0.3); box-shadow:var(--shadow-md); transform:translateY(-1px); }
+.setup-card-icon { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.setup-card-icon-blue { background:rgba(21,154,255,0.1); color:var(--accent); }
+.setup-card-icon-navy { background:rgba(12,107,184,0.1); color:var(--accent-deep); }
+.setup-card-body { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.setup-card-title { font-size:12.5px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:6px; }
+.setup-card-ver { font-size:9.5px; font-weight:600; color:var(--text-faint); background:var(--card); border:1px solid var(--border); padding:1px 6px; border-radius:6px; }
+.setup-card-desc { font-size:10.5px; color:var(--text-muted); line-height:1.4; }
+.setup-card-cta { font-size:10.5px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; }
+.setup-card-cta-navy { color:var(--accent-deep); }
+
 .profile-form { display:flex; flex-direction:column; gap:14px; max-width:420px; }
 .form-field { display:flex; flex-direction:column; gap:6px; }
 .form-field label { font-size:11.5px; font-weight:600; color:var(--text-muted); }
@@ -1367,11 +1606,19 @@ select { font-family:inherit; }
 .info-modal h3 { font-size:15.5px; font-weight:700; color:var(--text); }
 .info-modal p  { font-size:12.5px; color:var(--text-muted); line-height:1.5; }
 
+@media (max-width:1280px) {
+  .kanban-board { grid-template-columns:1fr 1fr; }
+}
 @media (max-width:1024px) {
   .tasks-layout { grid-template-columns:1fr; }
   .tasks-calendar-col { position:static; }
   .emp-bottom-grid { grid-template-columns:1fr; }
   .domain-grid { grid-template-columns:repeat(2,1fr); }
+}
+@media (max-width:860px) {
+  .kanban-board { grid-template-columns:1fr; }
+  .kanban-col-body { max-height:none; }
+  .setup-cards { grid-template-columns:1fr; }
 }
 @media (max-width:768px) {
   .sidebar { position:fixed; top:0; left:-260px; height:100%; margin:0; border-radius:0; transition:left .28s; }
@@ -1384,3 +1631,13 @@ select { font-family:inherit; }
 }
 </style>
 
+.top-header { flex-direction:column; align-items:flex-start; }
+.domain-grid {grid-template-columns:1fr; }
+.emp-stat-grid { grid-template-columns:1fr; }
+@media (max-width:768px){
+  .content { padding:60px 16px 24px; }
+
+}
+.domain-grid {grid-template-columns;align-items:flex-start; }
+.emp-stat-grid {grid-template-columns:1fr; }
+.content { padding:60px 16px 24px; }

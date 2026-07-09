@@ -148,13 +148,73 @@
             </div>
             <button class="btn-ghost btn-xs" @click="selectedCompany = null">Close</button>
           </div>
+
+          <!-- quick pulse row -->
+          <div class="pulse-row">
+            <div class="pulse-chip">
+              <span class="status-dot dot-active pulse"></span>
+              <span>{{ onlineCount }} active now</span>
+            </div>
+            <div class="pulse-chip">
+              <span class="status-dot dot-idle"></span>
+              <span>{{ idleCount }} idle</span>
+            </div>
+            <div class="pulse-chip">
+              <span class="status-dot dot-off"></span>
+              <span>{{ offlineCount }} offline</span>
+            </div>
+            <div class="pulse-chip pulse-chip-muted">
+              <span>{{ totalAssigned }} tasks assigned · {{ totalCompleted }} done</span>
+            </div>
+          </div>
+
           <div class="table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>Username</th><th>Role</th></tr></thead>
+            <table class="admin-table employee-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Task load</th>
+                  <th>Today</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
               <tbody>
                 <tr v-for="u in selectedCompany.users" :key="u.id">
-                  <td>{{ u.username }}</td>
-                  <td><span class="role-tag">{{ u.role.replace('_',' ') }}</span></td>
+                  <td>
+                    <div class="emp-cell">
+                      <strong>{{ u.username }}</strong>
+                      <span class="emp-email" v-if="u.email">{{ u.email }}</span>
+                    </div>
+                  </td>
+                  <td><span class="role-tag">{{ formatRole(u.role) }}</span></td>
+                  <td>
+                    <span class="status-chip" :class="statusClass(u)">
+                      <span class="status-dot" :class="statusDotClass(u)" :style="{ animation: u.is_online && !u.is_idle ? undefined : 'none' }"></span>
+                      {{ statusLabel(u) }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="task-load" v-if="u.role !== 'super_admin'">
+                      <span class="task-load-text">
+                        <template v-if="u.role === 'team_lead'">{{ u.created_tasks_count }} created</template>
+                        <template v-else>{{ u.completed_tasks_count }}/{{ u.assigned_tasks_count }} done</template>
+                      </span>
+                      <div class="task-bar" v-if="u.role !== 'team_lead' && u.assigned_tasks_count">
+                        <div class="task-bar-fill" :style="{ width: taskPct(u) + '%' }"></div>
+                      </div>
+                    </div>
+                    <span class="muted" v-else>—</span>
+                  </td>
+                  <td>
+                    <span v-if="hasTodayActivity(u)">
+                      {{ u.today_active_formatted }}
+                      <span class="today-pct">({{ u.today_active_pct }}%)</span>
+                    </span>
+                    <span class="muted" v-else>—</span>
+                  </td>
+                  <td class="muted">{{ u.last_seen ? formatDateTime(u.last_seen) : 'Never' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -187,7 +247,27 @@ export default {
       if (!this.search) return this.companies
       const t = this.search.toLowerCase()
       return this.companies.filter(c => c.name.toLowerCase().includes(t) || (c.owner_username || '').toLowerCase().includes(t))
-    }
+    },
+    onlineCount() {
+      if (!this.selectedCompany) return 0
+      return this.selectedCompany.users.filter(u => u.is_online && !u.is_idle).length
+    },
+    idleCount() {
+      if (!this.selectedCompany) return 0
+      return this.selectedCompany.users.filter(u => u.is_online && u.is_idle).length
+    },
+    offlineCount() {
+      if (!this.selectedCompany) return 0
+      return this.selectedCompany.users.filter(u => !u.is_online).length
+    },
+    totalAssigned() {
+      if (!this.selectedCompany) return 0
+      return this.selectedCompany.users.reduce((sum, u) => sum + (u.assigned_tasks_count || 0), 0)
+    },
+    totalCompleted() {
+      if (!this.selectedCompany) return 0
+      return this.selectedCompany.users.reduce((sum, u) => sum + (u.completed_tasks_count || 0), 0)
+    },
   },
   mounted() { this.loadAll() },
   methods: {
@@ -225,6 +305,25 @@ export default {
       } catch (err) { alert("Could not update plan.") }
     },
     formatDate(d) { return d ? new Date(d).toLocaleDateString() : '—' },
+    formatDateTime(d) { return d ? new Date(d.replace(' ', 'T')).toLocaleString() : '—' },
+    formatRole(role) { return (role || '').replace('_', ' ') },
+    hasTodayActivity(u) { return (u.today_active_seconds || 0) + (u.today_idle_seconds || 0) > 0 },
+    taskPct(u) {
+      if (!u.assigned_tasks_count) return 0
+      return Math.round((u.completed_tasks_count / u.assigned_tasks_count) * 100)
+    },
+    statusLabel(u) {
+      if (!u.is_online) return 'Offline'
+      return u.is_idle ? 'Idle' : 'Active'
+    },
+    statusClass(u) {
+      if (!u.is_online) return 'chip-off'
+      return u.is_idle ? 'chip-idle' : 'chip-active'
+    },
+    statusDotClass(u) {
+      if (!u.is_online) return 'dot-off'
+      return u.is_idle ? 'dot-idle' : 'dot-active'
+    },
     logout() {
       if (!confirm("Log out?")) return
       localStorage.removeItem("access"); localStorage.removeItem("refresh")
@@ -242,12 +341,14 @@ export default {
   --border:rgba(15,23,42,0.07); --accent:#159aff; --accent-deep:#0c6bb8;
   --shadow-md:0 4px 16px rgba(16,24,40,0.07); --shadow-lg:0 20px 48px rgba(16,24,40,0.10);
   --sidebar-bg:linear-gradient(175deg,#0a1525 0%,#0f1e34 50%,#0b1828 100%);
+  --status-active:#16a34a; --status-idle:#d97706; --status-off:#94a3b8;
 }
 .dark {
   --bg:#080d15; --card:#111825; --text:#e8edf5; --text-muted:#7b8fa8; --text-faint:#4a5568;
   --border:rgba(255,255,255,0.065); --accent:#159aff; --accent-deep:#0c6bb8;
   --shadow-md:0 6px 20px rgba(0,0,0,0.4); --shadow-lg:0 24px 64px rgba(0,0,0,0.55);
   --sidebar-bg:linear-gradient(175deg,#050a12 0%,#0a1220 50%,#060c18 100%);
+  --status-active:#22c55e; --status-idle:#f59e0b; --status-off:#4a5568;
 }
 
 .dashboard-layout { display:flex; min-height:100vh; background:var(--bg); }
@@ -309,7 +410,7 @@ export default {
 .company-cell { display:flex; align-items:center; gap:9px; }
 .company-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .dot-ok  { background:#22c55e; }
-.dot-off { background:#dc2626; }
+.dot-off { background:var(--status-off); }
 .company-owner { display:block; font-size:11px; color:var(--text-faint); margin-top:1px; }
 .count-pill { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:2px 9px; font-size:11.5px; font-weight:600; }
 .plan-select { padding:5px 8px; border-radius:7px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:11.5px; font-weight:600; }
@@ -326,12 +427,42 @@ export default {
 
 .modal-overlay { position:fixed; inset:0; background:rgba(4,8,16,0.55); display:flex; justify-content:center; align-items:center; z-index:100; backdrop-filter:blur(5px); }
 .modal-box { background:var(--card); border-radius:16px; box-shadow:var(--shadow-lg); border:1px solid var(--border); }
-.detail-modal { width:520px; max-width:92vw; max-height:80vh; overflow-y:auto; padding:22px 24px; }
-.detail-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.detail-modal { width:660px; max-width:94vw; max-height:82vh; overflow-y:auto; padding:22px 24px; }
+.detail-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
 .detail-header h3 { font-size:16px; font-weight:700; }
+
+/* pulse summary row in drawer */
+.pulse-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.pulse-chip { display:flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:5px 12px; font-size:11.5px; font-weight:600; color:var(--text); }
+.pulse-chip-muted { color:var(--text-muted); }
+
+/* status dot / chip system */
+.status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.dot-active { background:var(--status-active); }
+.dot-idle   { background:var(--status-idle); }
+.pulse { animation: statusPulse 1.6s ease-in-out infinite; }
+@keyframes statusPulse {
+  0%   { box-shadow:0 0 0 0 rgba(34,197,94,0.45); }
+  70%  { box-shadow:0 0 0 5px rgba(34,197,94,0); }
+  100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
+}
+.status-chip { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; padding:3px 10px 3px 8px; border-radius:14px; }
+.chip-active { background:rgba(34,197,94,0.1); color:var(--status-active); }
+.chip-idle   { background:rgba(217,119,6,0.1); color:var(--status-idle); }
+.chip-off    { background:rgba(148,163,184,0.12); color:var(--text-muted); }
+
+/* employee table extras */
+.emp-cell { display:flex; flex-direction:column; }
+.emp-email { font-size:10.5px; color:var(--text-faint); margin-top:1px; }
+.task-load { display:flex; flex-direction:column; gap:4px; min-width:90px; }
+.task-load-text { font-size:11.5px; font-weight:600; }
+.task-bar { width:100%; height:5px; border-radius:3px; background:var(--bg); border:1px solid var(--border); overflow:hidden; }
+.task-bar-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .2s; }
+.today-pct { color:var(--text-faint); font-size:10.5px; }
 
 @media (max-width:768px) {
   .sidebar { display:none; }
   .content { padding:60px 16px 24px; }
+  .detail-modal { width:94vw; }
 }
 </style>

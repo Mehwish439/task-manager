@@ -88,73 +88,189 @@
         </div>
       </div>
 
-      <!-- ===== TASKS ===== -->
+      <!-- ===== TASKS (Kanban: Pending / In Progress / Completed) ===== -->
       <section v-if="activeSection === 'tasks'">
-        <div class="tasks-layout">
+        <div class="tasks-board-layout">
 
-          <!-- LEFT: TASK LIST -->
-          <div class="tasks-list-col">
-            <div class="tasks-col-header">
-              <h2 class="section-heading" style="border:none;padding-bottom:0;margin-bottom:0;">
-                Tasks
-                <span class="tasks-count-badge">{{ filteredTasks.length }}</span>
-              </h2>
-              <button v-if="taskCalendarFilterDate" class="chip-clear" @click="taskCalendarFilterDate = null">
+          <!-- KANBAN BOARD -->
+          <div class="kanban-board">
+
+            <!-- PENDING COLUMN -->
+            <div class="kanban-col kanban-col-pending">
+              <div class="kanban-col-header">
+                <span class="kanban-col-dot"></span>
+                <span class="kanban-col-title">Pending</span>
+                <span class="kanban-col-badge">{{ pendingTasks.length }}</span>
+              </div>
+              <div class="kanban-col-body">
+                <div v-for="task in pendingTasks" :key="task.id" class="task-card task-card-compact" :id="'task-' + task.id">
+                  <div class="task-header task-header-compact task-header-pending">
+                    <strong class="task-title">{{ task.title }}</strong>
+                  </div>
+                  <p class="desc desc-compact">{{ task.description }}</p>
+                  <div class="task-meta-row">
+                    <span class="meta-pill"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>{{ task.start_date || '—' }} → {{ task.end_date || '—' }}</span>
+                  </div>
+
+                  <div v-if="task.comments && task.comments.length" class="task-comments task-comments-compact">
+                    <span class="comments-toggle" @click="toggleTaskComments(task.id)">
+                      {{ task.comments.length }} comment{{ task.comments.length > 1 ? 's' : '' }}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ rotated: expandedComments === task.id }"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </span>
+                    <ul v-if="expandedComments === task.id" class="comments-list">
+                      <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
+                    </ul>
+                  </div>
+
+                  <div class="assigned-row">
+                    <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-pills">
+                      <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
+                    </div>
+                    <em v-else class="unassigned-note">Unassigned</em>
+                  </div>
+
+                  <div class="task-card-footer">
+                    <div class="assign-section assign-section-compact">
+                      <select v-model="selectedUser[task.id]">
+                        <option disabled value="">Assign…</option>
+                        <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
+                      </select>
+                      <button class="btn-primary btn-xs" @click="assignUser(task.id)">Assign</button>
+                    </div>
+                    <button class="btn-danger btn-xs" @click="showModal(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="kanban-empty" v-if="!pendingTasks.length">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                  <p>{{ taskCalendarFilterDate ? 'None on this date.' : 'Nothing pending.' }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- IN PROGRESS COLUMN -->
+            <div class="kanban-col kanban-col-progress">
+              <div class="kanban-col-header">
+                <span class="kanban-col-dot"></span>
+                <span class="kanban-col-title">In Progress</span>
+                <span class="kanban-col-badge">{{ inProgressTasks.length }}</span>
+              </div>
+              <div class="kanban-col-body">
+                <div v-for="task in inProgressTasks" :key="task.id" class="task-card task-card-compact" :id="'task-' + task.id">
+                  <div class="task-header task-header-compact task-header-progress">
+                    <strong class="task-title">{{ task.title }}</strong>
+                  </div>
+                  <p class="desc desc-compact">{{ task.description }}</p>
+                  <div class="task-meta-row">
+                    <span class="meta-pill"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>{{ task.start_date || '—' }} → {{ task.end_date || '—' }}</span>
+                  </div>
+
+                  <div v-if="task.comments && task.comments.length" class="task-comments task-comments-compact">
+                    <span class="comments-toggle" @click="toggleTaskComments(task.id)">
+                      {{ task.comments.length }} comment{{ task.comments.length > 1 ? 's' : '' }}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ rotated: expandedComments === task.id }"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </span>
+                    <ul v-if="expandedComments === task.id" class="comments-list">
+                      <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
+                    </ul>
+                  </div>
+
+                  <div class="assigned-row">
+                    <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-pills">
+                      <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
+                    </div>
+                    <em v-else class="unassigned-note">Unassigned</em>
+                  </div>
+
+                  <div class="task-card-footer">
+                    <div class="assign-section assign-section-compact">
+                      <select v-model="selectedUser[task.id]">
+                        <option disabled value="">Assign…</option>
+                        <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
+                      </select>
+                      <button class="btn-primary btn-xs" @click="assignUser(task.id)">Assign</button>
+                    </div>
+                    <button class="btn-danger btn-xs" @click="showModal(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="kanban-empty" v-if="!inProgressTasks.length">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                  <p>{{ taskCalendarFilterDate ? 'None on this date.' : 'Nothing in progress.' }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- COMPLETED COLUMN -->
+            <div class="kanban-col kanban-col-complete">
+              <div class="kanban-col-header">
+                <span class="kanban-col-dot"></span>
+                <span class="kanban-col-title">Completed</span>
+                <span class="kanban-col-badge">{{ completeTasks.length }}</span>
+              </div>
+              <div class="kanban-col-body">
+                <div v-for="task in completeTasks" :key="task.id" class="task-card task-card-compact" :id="'task-' + task.id">
+                  <div class="task-header task-header-compact task-header-complete">
+                    <strong class="task-title">{{ task.title }}</strong>
+                  </div>
+                  <p class="desc desc-compact">{{ task.description }}</p>
+                  <div class="task-meta-row">
+                    <span class="meta-pill"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>{{ task.start_date || '—' }} → {{ task.end_date || '—' }}</span>
+                  </div>
+
+                  <div v-if="task.comments && task.comments.length" class="task-comments task-comments-compact">
+                    <span class="comments-toggle" @click="toggleTaskComments(task.id)">
+                      {{ task.comments.length }} comment{{ task.comments.length > 1 ? 's' : '' }}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ rotated: expandedComments === task.id }"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </span>
+                    <ul v-if="expandedComments === task.id" class="comments-list">
+                      <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
+                    </ul>
+                  </div>
+
+                  <div class="assigned-row">
+                    <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-pills">
+                      <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
+                    </div>
+                    <em v-else class="unassigned-note">Unassigned</em>
+                  </div>
+
+                  <div class="task-card-footer">
+                    <div class="assign-section assign-section-compact">
+                      <select v-model="selectedUser[task.id]">
+                        <option disabled value="">Assign…</option>
+                        <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
+                      </select>
+                      <button class="btn-primary btn-xs" @click="assignUser(task.id)">Assign</button>
+                    </div>
+                    <button class="btn-danger btn-xs" @click="showModal(task.id)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="kanban-empty" v-if="!completeTasks.length">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.28"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
+                  <p>{{ taskCalendarFilterDate ? 'None on this date.' : 'Nothing completed yet.' }}</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT: MINI CALENDAR -->
+          <aside class="tasks-calendar-col">
+            <div class="board-filter-chip-row" v-if="taskCalendarFilterDate">
+              <button class="chip-clear" @click="taskCalendarFilterDate = null">
                 {{ formatChipDate(taskCalendarFilterDate) }}
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
 
-            <ul v-if="filteredTasks.length" class="task-list task-list-compact">
-              <li v-for="task in filteredTasks" :key="task.id" class="task-card task-card-compact" :id="'task-' + task.id">
-                <div class="task-header task-header-compact">
-                  <strong class="task-title">{{ task.title }}</strong>
-                  <span class="status" :class="task.status">{{ task.status.replace('_',' ') }}</span>
-                </div>
-                <p class="desc desc-compact">{{ task.description }}</p>
-                <div class="task-meta-row">
-                  <span class="meta-pill"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>{{ task.start_date || '—' }} → {{ task.end_date || '—' }}</span>
-                </div>
-
-                <div v-if="task.comments && task.comments.length" class="task-comments task-comments-compact">
-                  <span class="comments-toggle" @click="toggleTaskComments(task.id)">
-                    {{ task.comments.length }} comment{{ task.comments.length > 1 ? 's' : '' }}
-                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ rotated: expandedComments === task.id }"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                  </span>
-                  <ul v-if="expandedComments === task.id" class="comments-list">
-                    <li v-for="c in task.comments" :key="c.id"><em>{{ c.author_username }}:</em> {{ c.content }}</li>
-                  </ul>
-                </div>
-
-                <div class="assigned-row">
-                  <div v-if="task.assigned_to && task.assigned_to.length" class="assigned-pills">
-                    <span v-for="u in task.assigned_to" :key="u.id" class="assigned-pill">{{ u.username }}</span>
-                  </div>
-                  <em v-else class="unassigned-note">Unassigned</em>
-                </div>
-
-                <div class="task-card-footer">
-                  <div class="assign-section assign-section-compact">
-                    <select v-model="selectedUser[task.id]">
-                      <option disabled value="">Assign…</option>
-                      <option v-for="member in teamMembers" :key="member.id" :value="member.id">{{ member.username }}</option>
-                    </select>
-                    <button class="btn-primary btn-xs" @click="assignUser(task.id)">Assign</button>
-                  </div>
-                  <button class="btn-danger btn-xs" @click="showModal(task.id)">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
-                  </button>
-                </div>
-              </li>
-            </ul>
-            <div class="empty-state" v-else>
-              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="opacity:.3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m-6-8h6M5 6h14M5 18h14"/></svg>
-              <p>{{ taskCalendarFilterDate ? 'No tasks starting on this date.' : 'No tasks created yet.' }}</p>
-            </div>
-          </div>
-
-          <!-- RIGHT: MINI CALENDAR -->
-          <aside class="tasks-calendar-col">
             <div class="mini-cal-card">
               <div class="mini-cal-header">
                 <span class="panel-title">{{ monthNames[calendarMonth-1] }} {{ calendarYear }}</span>
@@ -1031,6 +1147,13 @@ export default {
       }
       return list
     },
+
+    // NEW: grouped views of filteredTasks by status for the kanban board.
+    // Pure presentation split — does not touch fetching/assign/delete logic.
+    pendingTasks()     { return this.filteredTasks.filter(t => t.status === 'pending') },
+    inProgressTasks()  { return this.filteredTasks.filter(t => t.status === 'in_progress') },
+    completeTasks()    { return this.filteredTasks.filter(t => t.status === 'complete') },
+
     filteredUsers() {
       if (!this.userSearch) return this.teamMembers
       const t = this.userSearch.toLowerCase()
@@ -1485,7 +1608,7 @@ export default {
 
 <style scoped>
 /* ============================================================
-   QRM LEAD DASHBOARD v3 — tasks + mini calendar, tighter cards
+   QRM LEAD DASHBOARD v4 — kanban task board + tighter, polished UI
    ============================================================ */
 
 * { font-family:'Poppins',sans-serif; box-sizing:border-box; margin:0; padding:0; }
@@ -1502,6 +1625,9 @@ export default {
   --border-mid:rgba(15,23,42,0.11);
   --accent:#159aff;
   --accent-deep:#0c6bb8;
+  --pending:#eab308;
+  --progress:#159aff;
+  --complete:#22c55e;
   --shadow-xs:0 1px 2px rgba(16,24,40,0.05);
   --shadow-sm:0 1px 3px rgba(16,24,40,0.06), 0 1px 2px rgba(16,24,40,0.04);
   --shadow-md:0 4px 16px rgba(16,24,40,0.07), 0 2px 4px rgba(16,24,40,0.04);
@@ -1519,6 +1645,9 @@ export default {
   --border-mid:rgba(255,255,255,0.10);
   --accent:#159aff;
   --accent-deep:#0c6bb8;
+  --pending:#eab308;
+  --progress:#159aff;
+  --complete:#22c55e;
   --shadow-xs:0 1px 2px rgba(0,0,0,0.35);
   --shadow-sm:0 1px 3px rgba(0,0,0,0.4);
   --shadow-md:0 6px 20px rgba(0,0,0,0.4);
@@ -1652,50 +1781,98 @@ export default {
 .expand-enter-from, .expand-leave-to { opacity:0; max-height:0; transform:translateY(-6px); }
 .expand-enter-to, .expand-leave-from { opacity:1; max-height:400px; }
 
-/* ──────── TASKS LAYOUT (list + calendar) ──────── */
-.tasks-layout { display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start; }
-.tasks-list-col { min-width:0; }
-.tasks-calendar-col { display:flex; flex-direction:column; gap:14px; position:sticky; top:8px; }
+/* ══════════════════════════════════════════════
+   TASKS — KANBAN BOARD (Pending / In Progress / Completed)
+   ══════════════════════════════════════════════ */
+.tasks-board-layout { display:grid; grid-template-columns:1fr 264px; gap:16px; align-items:start; }
+.tasks-calendar-col { display:flex; flex-direction:column; gap:12px; position:sticky; top:8px; }
 
-.tasks-col-header { display:flex; align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; }
-.tasks-count-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; background:rgba(21,154,255,0.1); color:var(--accent); border-radius:10px; font-size:11px; font-weight:700; }
-.chip-clear { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:16px; background:rgba(21,154,255,0.09); color:var(--accent); border:1px solid rgba(21,154,255,0.22); font-size:11.5px; font-weight:600; cursor:pointer; transition:all .15s; }
-.chip-clear:hover { background:rgba(21,154,255,0.18); }
+.board-filter-chip-row { display:flex; }
 
-/* Compact task list - single column, denser cards */
-.task-list-compact { grid-template-columns:1fr; gap:10px; display:grid; }
-.task-card-compact { padding:13px 15px; border-radius:13px; display:flex; flex-direction:column; min-height:208px; }
+.kanban-board { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:start; }
+
+.kanban-col {
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+}
+
+.kanban-col-header {
+  display:flex; align-items:center; gap:7px;
+  padding:6px 8px 10px;
+  border-bottom:1px solid var(--border);
+}
+.kanban-col-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.kanban-col-title { font-size:12.5px; font-weight:700; color:var(--text); letter-spacing:-.005em; flex:1; }
+.kanban-col-badge {
+  font-size:10.5px; font-weight:700; min-width:20px; height:20px; padding:0 6px;
+  display:inline-flex; align-items:center; justify-content:center; border-radius:10px;
+}
+
+.kanban-col-pending .kanban-col-dot   { background:var(--pending); box-shadow:0 0 0 3px rgba(234,179,8,0.16); }
+.kanban-col-progress .kanban-col-dot  { background:var(--progress); box-shadow:0 0 0 3px rgba(21,154,255,0.16); }
+.kanban-col-complete .kanban-col-dot  { background:var(--complete); box-shadow:0 0 0 3px rgba(34,197,94,0.16); }
+
+.kanban-col-pending .kanban-col-badge  { background:rgba(234,179,8,0.12); color:#92660b; }
+.kanban-col-progress .kanban-col-badge { background:rgba(21,154,255,0.1); color:var(--accent); }
+.kanban-col-complete .kanban-col-badge { background:rgba(34,197,94,0.12); color:#15803d; }
+.dark .kanban-col-pending .kanban-col-badge { color:#eab308; }
+.dark .kanban-col-complete .kanban-col-badge { color:#4ade80; }
+
+.kanban-col-pending  { border-top:3px solid var(--pending); }
+.kanban-col-progress { border-top:3px solid var(--progress); }
+.kanban-col-complete { border-top:3px solid var(--complete); }
+
+.kanban-col-body { display:flex; flex-direction:column; gap:10px; max-height:calc(100vh - 220px); overflow-y:auto; padding-right:2px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.kanban-col-body::-webkit-scrollbar { width:4px; }
+.kanban-col-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+.kanban-empty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:26px 12px; color:var(--text-muted); font-size:11.5px; text-align:center; }
+
+/* Compact task cards inside kanban columns */
+.task-card-compact { padding:12px 13px; border-radius:13px; display:flex; flex-direction:column; gap:0; }
 .task-card-compact:hover { transform:translateY(-1px); }
 
-.task-header-compact { padding:7px 11px; margin-bottom:9px; border-radius:9px; }
-.task-header-compact .task-title { font-size:12.5px; }
+.task-header-compact { padding:7px 10px; margin-bottom:8px; border-radius:9px; display:flex; align-items:center; }
+.task-header-compact .task-title { font-size:12px; line-height:1.35; }
+.task-header-pending  { background:linear-gradient(135deg,#a9740a,#eab308); box-shadow:0 3px 10px rgba(234,179,8,0.22); }
+.task-header-progress { background:linear-gradient(135deg,#0b5fa0,#159aff); box-shadow:0 3px 10px rgba(21,154,255,0.2); }
+.task-header-complete  { background:linear-gradient(135deg,#15803d,#22c55e); box-shadow:0 3px 10px rgba(34,197,94,0.2); }
+.task-header-pending .task-title,
+.task-header-progress .task-title,
+.task-header-complete .task-title { color:#fff; }
 
-.desc-compact { font-size:12px; line-height:1.5; color:var(--text-muted); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:36px; }
+.desc-compact { font-size:11.5px; line-height:1.5; color:var(--text-muted); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
 .task-meta-row { margin-bottom:8px; }
-.meta-pill { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-faint); background:var(--surface); border:1px solid var(--border); padding:3px 9px; border-radius:8px; font-weight:600; }
+.meta-pill { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:var(--text-faint); background:var(--card); border:1px solid var(--border); padding:3px 8px; border-radius:8px; font-weight:600; }
 
 .task-comments-compact { margin-bottom:8px; }
-.comments-toggle { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--accent); cursor:pointer; }
+.comments-toggle { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:600; color:var(--accent); cursor:pointer; }
 .comments-toggle svg { transition:transform .18s; }
 .comments-toggle svg.rotated { transform:rotate(180deg); }
 
-.assigned-row { margin-bottom:10px; }
+.assigned-row { margin-bottom:9px; }
 
-.task-card-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--border); margin-top:auto; }
-.assign-section-compact { display:flex; gap:6px; flex:1; min-width:0; }
-.assign-section-compact select { flex:1; min-width:0; padding:6px 8px; font-size:11.5px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+.task-card-footer { display:flex; align-items:center; justify-content:space-between; gap:6px; padding-top:9px; border-top:1px solid var(--border); margin-top:auto; }
+.assign-section-compact { display:flex; gap:5px; flex:1; min-width:0; }
+.assign-section-compact select { flex:1; min-width:0; padding:6px 7px; font-size:10.5px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); }
 
 /* ──────── MINI CALENDAR (tasks sidebar) ──────── */
-.mini-cal-card { background:var(--card); border-radius:16px; padding:16px 17px; border:1px solid var(--border); box-shadow:var(--shadow-md); }
-.mini-cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.mini-cal-card { background:var(--card); border-radius:16px; padding:15px 16px; border:1px solid var(--border); box-shadow:var(--shadow-md); }
+.mini-cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
 .mini-cal-nav { display:flex; gap:4px; }
 .mini-cal-nav-btn { width:22px; height:22px; border-radius:7px; background:var(--surface); border:1px solid var(--border); color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
 .mini-cal-nav-btn:hover { border-color:var(--accent); color:var(--accent); }
 
 .mini-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
-.mini-cal-day { aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:8px; font-size:11px; cursor:pointer; transition:all .15s; position:relative; gap:2px; }
-.mini-cal-dow { font-size:9px; font-weight:700; color:var(--text-faint); text-transform:uppercase; cursor:default; aspect-ratio:auto; height:18px; }
+.mini-cal-day { aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:8px; font-size:10.5px; cursor:pointer; transition:all .15s; position:relative; gap:2px; }
+.mini-cal-dow { font-size:9px; font-weight:700; color:var(--text-faint); text-transform:uppercase; cursor:default; aspect-ratio:auto; height:16px; }
 .mini-cal-blank { cursor:default; }
 .mini-cal-daynum { font-weight:600; color:var(--text); }
 .mini-cal-day:hover:not(.mini-cal-blank):not(.mini-cal-dow) { background:rgba(21,154,255,0.08); }
@@ -1708,21 +1885,25 @@ export default {
 .mini-cal-dot { width:4px; height:4px; border-radius:50%; }
 .mini-cal-day.is-selected .mini-cal-dot { background:#fff !important; opacity:.85; }
 
-.mini-cal-legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid var(--border); }
-.mini-cal-legend span { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:var(--text-muted); font-weight:600; }
+.mini-cal-legend { display:flex; flex-wrap:wrap; gap:9px; margin-top:11px; padding-top:10px; border-top:1px solid var(--border); }
+.mini-cal-legend span { display:inline-flex; align-items:center; gap:5px; font-size:9.5px; color:var(--text-muted); font-weight:600; }
 .mini-cal-legend i { width:6px; height:6px; border-radius:50%; display:inline-block; }
-.dot-pending { background:#eab308; }
-.dot-progress { background:#159aff; }
-.dot-complete { background:#22c55e; }
+.dot-pending { background:var(--pending); }
+.dot-progress { background:var(--progress); }
+.dot-complete { background:var(--complete); }
 
-.day-task-mini-list { display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; }
+.day-task-mini-list { display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto; }
 .day-task-mini-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; background:var(--surface); border:1px solid var(--border); text-decoration:none; transition:all .15s; }
 .day-task-mini-item:hover { border-color:rgba(21,154,255,0.3); background:rgba(21,154,255,0.05); }
 .dtm-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.dtm-dot.complete { background:#22c55e; }
-.dtm-dot.in_progress { background:#159aff; }
-.dtm-dot.pending { background:#eab308; }
-.dtm-title { font-size:11.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dtm-dot.complete { background:var(--complete); }
+.dtm-dot.in_progress { background:var(--progress); }
+.dtm-dot.pending { background:var(--pending); }
+.dtm-title { font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.tasks-count-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; background:rgba(21,154,255,0.1); color:var(--accent); border-radius:10px; font-size:11px; font-weight:700; }
+.chip-clear { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:16px; background:rgba(21,154,255,0.09); color:var(--accent); border:1px solid rgba(21,154,255,0.22); font-size:11.5px; font-weight:600; cursor:pointer; transition:all .15s; }
+.chip-clear:hover { background:rgba(21,154,255,0.18); }
 
 /* ──────── TASKS (legacy / users section cards) ──────── */
 .task-list { list-style:none; padding:0; display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
@@ -2071,14 +2252,19 @@ export default {
 .dark .tl-entry-idle   { background:rgba(100,116,139,0.06); }
 .dark .mini-cal-nav-btn { border-color:rgba(255,255,255,0.07); }
 .dark .day-task-mini-item { border-color:rgba(255,255,255,0.06); }
+.dark .kanban-col { border-color:rgba(255,255,255,0.055); }
 
 /* ──────── RESPONSIVE ──────── */
+@media screen and (max-width:1380px) {
+  .tasks-board-layout { grid-template-columns:1fr 240px; }
+}
 @media screen and (max-width:1280px) {
   .desktop-bottom-grid { grid-template-columns:1fr; }
   .timeline-split-wrap { grid-template-columns:1fr 1fr; }
+  .kanban-board { grid-template-columns:1fr 1fr; }
 }
 @media screen and (max-width:1100px) {
-  .tasks-layout { grid-template-columns:1fr; }
+  .tasks-board-layout { grid-template-columns:1fr; }
   .tasks-calendar-col { position:static; flex-direction:row; flex-wrap:wrap; }
   .tasks-calendar-col .mini-cal-card { flex:1; min-width:240px; }
 }
@@ -2088,6 +2274,8 @@ export default {
 }
 @media screen and (max-width:800px) {
   .timeline-split-wrap { grid-template-columns:1fr; }
+  .kanban-board { grid-template-columns:1fr; }
+  .kanban-col-body { max-height:none; }
 }
 @media screen and (max-width:768px) {
   .sidebar { position:fixed; top:0; left:-260px; height:100%; margin:0; border-radius:0; transition:left .28s ease; }
@@ -2112,4 +2300,3 @@ export default {
   .assign-section-compact { width:100%; }
 }
 </style>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

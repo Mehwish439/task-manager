@@ -13,7 +13,10 @@ SECRET_KEY = 'django-insecure-4c2kggjmiu^w&$_(++#+jrn7$c5l1v$vz7p=52s4cr2njf1&b_
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['mehwishshakoor.pythonanywhere.com']
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+]
 
 
 # Application definition
@@ -125,9 +128,13 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
 CSRF_TRUSTED_ORIGINS = [
-    "https://yourdomain.com",
-    "https://mehwishshakoor.pythonanywhere.com",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 ]
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = '/home/mehwishshakoor/backend/media/'
+
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
